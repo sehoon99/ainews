@@ -40,4 +40,20 @@ module "storage_web" {
   enable_versioning = true
 }
 
-# 직접 리소스 추가는 여기 아래에 또는 별도 파일(ec2.tf 등)로
+module "rds" {
+  source = "../../modules/rds"
+
+  name       = "${var.project_name}-${var.environment}"
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnet_ids
+
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+  db_name           = "ainews"
+  db_username       = "admin"
+
+  allowed_cidr_blocks = ["10.0.0.0/16"]
+
+  multi_az            = false
+  skip_final_snapshot = true
+}
