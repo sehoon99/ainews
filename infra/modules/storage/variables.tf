@@ -37,3 +37,9 @@ variable "create_db_subnet_group" {
   type        = bool
   default     = false
 }
+
+variable "create_redis" {
+  description = "Create Reddis"
+  type        = bool
+  default     = false
+}

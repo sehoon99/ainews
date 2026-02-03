@@ -42,9 +42,9 @@ resource "aws_security_group" "db" {
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "PostgreSQL"
-    from_port       = 5432
-    to_port         = 5432
+    description     = "MySQL from Application"
+    from_port       = 3306
+    to_port         = 3306
     protocol        = "tcp"
     security_groups = var.app_security_group_ids
   }
@@ -59,4 +59,27 @@ resource "aws_security_group" "db" {
   tags = {
     Name = "${var.name}-db-sg"
   }
+}
+
+resource "aws_security_group" "redis" {
+  count       = var.create_redis ? 1 : 0 # Redis 생성 여부 변수(선택)
+  name        = "${var.name}-redis-sg"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "Redis from Application"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = var.app_security_group_ids
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.name}-redis-sg" }
 }
