@@ -21,6 +21,7 @@ projects:
 #      when_modified: ["*.tf", "*.tfvars", "../../modules/**/*.tf"]
 #      enabled: true
 
+
   - name: ainews-prod
     dir: infra/envs/p
     workspace: default

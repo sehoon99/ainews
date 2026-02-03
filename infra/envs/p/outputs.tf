@@ -17,3 +17,12 @@ output "image_bucket" {
 output "web_bucket" {
   value = module.storage_web.bucket_id
 }
+
+output "rds_endpoint" {
+  value = module.rds.endpoint
+}
+
+output "rds_secret_arn" {
+  value     = module.rds.secret_arn
+  sensitive = true
+}
