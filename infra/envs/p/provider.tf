@@ -3,7 +3,7 @@ terraform {
 
   backend "s3" {
     bucket         = "ainews-apnortheast2-tfstate"
-    key            = "envs/prod/terraform.tfstate"
+    key            = "envs/p/terraform.tfstate"
     region         = "ap-northeast-2"
     encrypt        = true
     dynamodb_table = "terraform-lock"
