@@ -10,6 +10,10 @@ output "private_subnet_ids" {
   value = module.vpc.private_subnet_ids
 }
 
-output "assets_bucket" {
-  value = module.storage.bucket_id
+output "image_bucket" {
+  value = module.storage_image.bucket_id
+}
+
+output "web_bucket" {
+  value = module.storage_web.bucket_id
 }

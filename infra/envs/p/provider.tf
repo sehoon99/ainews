@@ -1,12 +1,9 @@
-# Global resources (shared across environments)
-# e.g., IAM roles, Route53 zones, ACM certificates
-
 terraform {
   required_version = ">= 1.0"
 
   backend "s3" {
     bucket         = "ainews-apnortheast2-tfstate"
-    key            = "global/terraform.tfstate"
+    key            = "envs/prod/terraform.tfstate"
     region         = "ap-northeast-2"
     encrypt        = true
     dynamodb_table = "terraform-lock"
@@ -21,12 +18,13 @@ terraform {
 }
 
 provider "aws" {
-  region = "ap-northeast-2"
+  region = var.region
 
   default_tags {
     tags = {
-      Project   = "ainews"
-      ManagedBy = "terraform"
+      Project     = "ainews"
+      Environment = "prod"
+      ManagedBy   = "terraform"
     }
   }
 }

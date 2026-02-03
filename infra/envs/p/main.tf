@@ -1,34 +1,3 @@
-terraform {
-  required_version = ">= 1.0"
-
-  backend "s3" {
-    bucket         = "ainews-apnortheast2-tfstate"
-    key            = "envs/prod/terraform.tfstate"
-    region         = "ap-northeast-2"
-    encrypt        = true
-    dynamodb_table = "terraform-lock"
-  }
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.region
-
-  default_tags {
-    tags = {
-      Project     = "ainews"
-      Environment = "prod"
-      ManagedBy   = "terraform"
-    }
-  }
-}
-
 data "aws_availability_zones" "available" {
   state = "available"
 }
@@ -55,10 +24,20 @@ module "network" {
   enable_nat         = true
 }
 
-module "storage" {
+module "storage_image" {
   source = "../../modules/storage"
 
-  name              = "${var.project_name}-${var.environment}"
-  bucket_name       = "${var.project_name}-${var.environment}-assets"
+  name              = "${var.project_name}-image"
+  bucket_name       = "${var.project_name}-${var.environment}-image"
   enable_versioning = true
 }
+
+module "storage_web" {
+  source = "../../modules/storage"
+
+  name              = "${var.project_name}-web"
+  bucket_name       = "${var.project_name}-${var.environment}-web"
+  enable_versioning = true
+}
+
+# 직접 리소스 추가는 여기 아래에 또는 별도 파일(ec2.tf 등)로

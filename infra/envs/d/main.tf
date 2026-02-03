@@ -36,10 +36,10 @@ data "aws_availability_zones" "available" {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name           = "${var.project_name}-${var.environment}"
-  cidr           = "10.0.0.0/16"
-  azs            = slice(data.aws_availability_zones.available.names, 0, 2)
-  public_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
+  name            = "${var.project_name}-${var.environment}"
+  cidr            = "10.0.0.0/16"
+  azs             = slice(data.aws_availability_zones.available.names, 0, 2)
+  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24"]
   private_subnets = ["10.0.11.0/24", "10.0.12.0/24"]
 }
 
@@ -52,7 +52,7 @@ module "network" {
   public_subnet_id   = module.vpc.public_subnet_ids[0]
   public_subnet_ids  = module.vpc.public_subnet_ids
   private_subnet_ids = module.vpc.private_subnet_ids
-  enable_nat         = false # Enable in prod
+  enable_nat         = false
 }
 
 module "storage" {
