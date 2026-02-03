@@ -8,21 +8,21 @@ projects:
       enabled: true
 
   - name: ainews-dev
-    dir: infra/envs/dev
+    dir: infra/envs/d
     workspace: default
     autoplan:
       when_modified: ["*.tf", "*.tfvars", "../../modules/**/*.tf"]
       enabled: true
 
   - name: ainews-staging
-    dir: infra/envs/staging
+    dir: infra/envs/s
     workspace: default
     autoplan:
       when_modified: ["*.tf", "*.tfvars", "../../modules/**/*.tf"]
       enabled: true
 
   - name: ainews-prod
-    dir: infra/envs/prod
+    dir: infra/envs/p
     workspace: default
     autoplan:
       when_modified: ["*.tf", "*.tfvars", "../../modules/**/*.tf"]
