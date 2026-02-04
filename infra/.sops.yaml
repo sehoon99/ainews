@@ -1,0 +1,3 @@
+creation_rules:
+  - path_regex: secrets/.*\.yaml$
+    kms: "arn:aws:kms:ap-northeast-2:633309913072:alias/ainews-sops"
