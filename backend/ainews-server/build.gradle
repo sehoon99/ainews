@@ -1,7 +1,8 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.2'
+    id 'org.springframework.boot' version '3.4.2'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.flywaydb.flyway' version '11.1.0'
 }
 
 group = 'com.example'
@@ -19,10 +20,10 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-batch-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-    implementation 'org.springframework.boot:spring-boot-starter-webservices'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-web-services'
 
     // Database
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -32,13 +33,22 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-batch-jdbc-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webservices-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+    testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// Flyway CLI 설정 (환경변수로 DB 접속 정보 주입)
+flyway {
+    url = "jdbc:mysql://${System.env.DB_HOST ?: 'localhost'}:${System.env.DB_PORT ?: '3306'}/${System.env.DB_NAME ?: 'ainews'}"
+    user = System.env.DB_USERNAME ?: 'admin'
+    password = System.env.DB_PASSWORD ?: ''
+    locations = ['classpath:db/migration']
+    baselineOnMigrate = true
+    cleanDisabled = true  // 운영 DB 보호: clean 명령 비활성화
 }
