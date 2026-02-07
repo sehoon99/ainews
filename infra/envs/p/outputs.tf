@@ -26,3 +26,8 @@ output "rds_secret_arn" {
   value     = module.rds.secret_arn
   sensitive = true
 }
+
+output "bastion_instance_id" {
+  description = "Bastion EC2 instance ID for Session Manager"
+  value       = module.bastion.instance_id
+}
