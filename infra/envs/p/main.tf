@@ -116,3 +116,19 @@ module "lambda_image_analyzer" {
     Environment = var.environment
   }
 }
+
+# Bastion Host for Session Manager (RDS 접속용)
+module "bastion" {
+  source = "../../modules/bastion"
+
+  name      = "${var.project_name}-${var.environment}"
+  vpc_id    = module.vpc.vpc_id
+  subnet_id = module.vpc.private_subnet_ids[0]
+
+  instance_type = "t3.micro"
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
