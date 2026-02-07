@@ -4,3 +4,4 @@ newspaper3k>=0.2.8
 lxml>=4.9.0
 lxml_html_clean>=0.1.0
 boto3>=1.34.0
+pymysql>=1.1.0

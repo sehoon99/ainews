@@ -5,6 +5,7 @@ DeepScan News - 네이버/다음 뉴스 본문 이미지 및 메타데이터 추
 import re
 import json
 import hashlib
+import argparse
 from urllib.parse import urljoin, urlparse
 from typing import Optional
 from datetime import datetime, timezone
@@ -13,6 +14,9 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 from newspaper import Article
+
+from db_client import DBClient
+from sqs_client import create_sqs_client
 
 
 # 필터링할 이미지 URL 키워드
@@ -830,10 +834,255 @@ def extract_news_data(url: str) -> dict:
         }
 
 
-if __name__ == '__main__':
+def crawl_and_insert_db(
+    urls: list[str],
+    save_json: bool = False,
+    base_dir: Optional[Path] = None,
+) -> dict:
+    """
+    뉴스 URL을 크롤링하여 DB에 INSERT하고 SQS로 이미지 분석 요청 전송
+
+    Args:
+        urls: 뉴스 기사 URL 리스트
+        save_json: JSON 파일로도 저장할지 여부
+        base_dir: JSON 저장 경로 (save_json=True 시 사용)
+
+    Returns:
+        dict: {stats: {total, success, duplicate, failed, sqs_sent}}
+    """
+    if base_dir is None:
+        base_dir = DATA_DIR
+
+    # DB 클라이언트 초기화
+    db = DBClient()
+    sqs = create_sqs_client()
+
+    stats = {
+        'total': len(urls),
+        'success': 0,
+        'duplicate': 0,
+        'failed': 0,
+        'no_images': 0,
+        'sqs_sent': 0,
+    }
+
+    # JSON 저장용 (save_json=True 시)
+    portal_articles = {'naver': [], 'daum': [], 'others': []}
+
+    try:
+        db.connect()
+
+        for i, url in enumerate(urls, 1):
+            print(f'[{i}/{len(urls)}] 크롤링: {url[:60]}...')
+
+            # URL 중복 체크 (DB 기준)
+            if db.url_exists(url):
+                print(f'    → 중복 (DB에 존재)')
+                stats['duplicate'] += 1
+                continue
+
+            try:
+                data = extract_news_data(url)
+
+                if 'error' in data:
+                    print(f'    → 실패: {data["error"][:50]}')
+                    stats['failed'] += 1
+                    continue
+
+                images = data.get('images', [])
+                if not images:
+                    print(f'    → 제외 (이미지 없음)')
+                    stats['no_images'] += 1
+                    continue
+
+                portal = get_portal_type(url)
+
+                # DB INSERT
+                article_id = db.insert_news_data(data, portal)
+
+                if article_id is None:
+                    print(f'    → 중복 (INSERT 실패)')
+                    stats['duplicate'] += 1
+                    continue
+
+                stats['success'] += 1
+                print(f'    → 성공 (article_id={article_id}, 이미지 {len(images)}개)')
+
+                # SQS 전송 (이미지 분석 요청)
+                if sqs:
+                    message_id = sqs.send_message(
+                        article_id=article_id,
+                        image_urls=images,
+                        source_url=url,
+                    )
+                    if message_id:
+                        stats['sqs_sent'] += 1
+                        print(f'    → SQS 전송 완료 (message_id={message_id[:12]}...)')
+
+                # JSON 저장 (옵션)
+                if save_json:
+                    data['article_id'] = article_id
+                    portal_articles[portal].append(data)
+
+            except Exception as e:
+                print(f'    → 오류: {e}')
+                stats['failed'] += 1
+
+    finally:
+        db.close()
+
+    # JSON 파일 저장 (save_json=True 시)
+    saved_files = []
+    if save_json:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        for portal, articles in portal_articles.items():
+            if not articles:
+                continue
+
+            portal_dir = base_dir / portal
+            portal_dir.mkdir(parents=True, exist_ok=True)
+
+            for batch_idx in range(0, len(articles), BATCH_SIZE):
+                batch = articles[batch_idx:batch_idx + BATCH_SIZE]
+                batch_num = batch_idx // BATCH_SIZE + 1
+
+                filename = f'{timestamp}_batch{batch_num:03d}_{len(batch)}articles.json'
+                file_path = portal_dir / filename
+
+                batch_data = {
+                    'portal': portal,
+                    'count': len(batch),
+                    'crawled_at': datetime.now(timezone.utc).isoformat() + 'Z',
+                    'articles': batch,
+                }
+
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(batch_data, f, ensure_ascii=False, indent=2)
+
+                saved_files.append(str(file_path))
+                print(f'\nJSON 저장: {file_path}')
+
+    # 최종 요약
+    print(f'\n{"="*50}')
+    print(f'크롤링 완료!')
+    print(f'  - 전체: {stats["total"]}개')
+    print(f'  - 성공 (DB INSERT): {stats["success"]}개')
+    print(f'  - 중복 스킵: {stats["duplicate"]}개')
+    print(f'  - 이미지 없음: {stats["no_images"]}개')
+    print(f'  - 실패: {stats["failed"]}개')
+    if sqs:
+        print(f'  - SQS 전송: {stats["sqs_sent"]}개')
+    if save_json:
+        print(f'  - JSON 파일: {len(saved_files)}개')
+    print(f'{"="*50}')
+
+    return {'stats': stats, 'saved_files': saved_files if save_json else []}
+
+
+def crawl_all_to_db(count_per_section: int = 30, save_json: bool = False) -> dict:
+    """
+    네이버 + 다음 뉴스 모든 섹션을 크롤링하여 DB에 저장
+
+    Args:
+        count_per_section: 섹션당 가져올 기사 수
+        save_json: JSON 파일로도 저장할지 여부
+
+    Returns:
+        dict: crawl_and_insert_db 결과
+    """
+    urls = fetch_all_news_urls(count_per_section)
+    return crawl_and_insert_db(urls, save_json=save_json)
+
+
+def main():
+    """CLI 엔트리포인트"""
+    parser = argparse.ArgumentParser(
+        description='DeepScan News - 네이버/다음 뉴스 크롤러',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+예제:
+  # DB에 저장 (기본)
+  python main.py --db
+
+  # JSON 파일로만 저장 (기존 방식)
+  python main.py --json
+
+  # DB + JSON 둘 다 저장
+  python main.py --db --json
+
+  # 섹션당 50개씩 크롤링
+  python main.py --db --count 50
+
+  # 특정 URL만 크롤링
+  python main.py --url "https://n.news.naver.com/..." --db
+        '''
+    )
+
+    parser.add_argument(
+        '--db',
+        action='store_true',
+        help='DB에 저장 (MySQL)',
+    )
+    parser.add_argument(
+        '--json',
+        action='store_true',
+        dest='save_json',
+        help='JSON 파일로 저장',
+    )
+    parser.add_argument(
+        '--count',
+        type=int,
+        default=30,
+        help='섹션당 크롤링할 기사 수 (기본값: 30)',
+    )
+    parser.add_argument(
+        '--url',
+        type=str,
+        help='단일 URL 크롤링',
+    )
+    parser.add_argument(
+        '--section',
+        type=str,
+        choices=['all', 'politics', 'economy', 'society', 'culture', 'world', 'science'],
+        default=None,
+        help='특정 섹션만 크롤링',
+    )
+
+    args = parser.parse_args()
+
     print('=' * 60)
     print('DeepScan News - 네이버 + 다음 뉴스 크롤러')
     print('=' * 60)
 
-    # 모든 섹션에서 섹션당 30개씩 크롤링
-    result = crawl_all(count_per_section=30)
+    # 단일 URL 크롤링
+    if args.url:
+        if args.db:
+            result = crawl_and_insert_db([args.url], save_json=args.save_json)
+        else:
+            data = extract_news_data(args.url)
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    # DB 모드가 지정되지 않으면 기존 JSON 모드 사용
+    if not args.db and not args.save_json:
+        # 기본 동작: JSON 저장 모드
+        args.save_json = True
+
+    # 섹션별 또는 전체 크롤링
+    if args.section:
+        naver_urls = fetch_naver_news_urls(args.section, args.count)
+        daum_urls = fetch_daum_news_urls(args.section, args.count)
+        urls = list(set(naver_urls + daum_urls))
+    else:
+        urls = fetch_all_news_urls(args.count)
+
+    # 크롤링 실행
+    if args.db:
+        crawl_and_insert_db(urls, save_json=args.save_json)
+    else:
+        crawl_and_save_batch(urls)
+
+
+if __name__ == '__main__':
+    main()
