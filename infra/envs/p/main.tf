@@ -116,6 +116,22 @@ module "lambda_image_analyzer" {
   }
 }
 
+# OpenSearch for article full-text search
+module "opensearch" {
+  source = "../../modules/opensearch"
+
+  name                = "${var.project_name}-${var.environment}"
+  domain_name         = "${var.project_name}-${var.environment}"
+  vpc_id              = module.vpc.vpc_id
+  subnet_ids          = module.vpc.private_subnet_ids
+  allowed_cidr_blocks = ["10.0.0.0/16"]
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
 # Bastion Host for Session Manager (RDS 접속용)
 # TODO: RDS 프라이빗 전환 시 주석 해제
 # module "bastion" {
