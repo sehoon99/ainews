@@ -27,6 +27,11 @@ output "rds_secret_arn" {
   sensitive = true
 }
 
+output "opensearch_endpoint" {
+  description = "OpenSearch domain endpoint"
+  value       = module.opensearch.domain_endpoint
+}
+
 # TODO: RDS 프라이빗 전환 시 주석 해제
 # output "bastion_instance_id" {
 #   description = "Bastion EC2 instance ID for Session Manager"

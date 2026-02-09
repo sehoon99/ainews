@@ -36,6 +36,9 @@ public class Article {
     @JoinColumn(name = "author_id")
     private Author author;
 
+    @Column
+    private String portal;
+
     @Column(nullable = false, length = 500)
     private String title;
 
@@ -53,6 +56,7 @@ public class Article {
     private LocalDateTime crawledAt;
 
     @OneToMany(mappedBy = "article")
+    @org.hibernate.annotations.BatchSize(size = 100)
     private List<ImageAnalysis> imageAnalyses = new ArrayList<>();
 
     protected Article() {
@@ -123,6 +127,14 @@ public class Article {
 
     public LocalDateTime getCrawledAt() {
         return crawledAt;
+    }
+
+    public String getPortal() {
+        return portal;
+    }
+
+    public void setPortal(String portal) {
+        this.portal = portal;
     }
 
     public List<ImageAnalysis> getImageAnalyses() {

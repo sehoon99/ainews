@@ -33,6 +33,18 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
 
+    // OpenSearch
+    implementation 'org.opensearch.client:opensearch-java:2.13.0'
+    implementation 'org.opensearch.client:opensearch-rest-client:2.13.0'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.3.1'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+    // AWS SDK v2 (프로덕션 IAM 서명용)
+    implementation platform('software.amazon.awssdk:bom:2.25.0')
+    implementation 'software.amazon.awssdk:opensearch'
+    implementation 'software.amazon.awssdk:auth'
+    implementation 'software.amazon.awssdk:apache-client'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.batch:spring-batch-test'
     testImplementation 'org.springframework.security:spring-security-test'

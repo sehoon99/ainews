@@ -34,6 +34,14 @@ spring:
     locations: classpath:db/migration
     validate-on-migrate: true
 
+opensearch:
+  host: ${OPENSEARCH_HOST:localhost}
+  port: ${OPENSEARCH_PORT:9200}
+  scheme: ${OPENSEARCH_SCHEME:http}
+  username: ${OPENSEARCH_USERNAME:admin}
+  password: ${OPENSEARCH_PASSWORD:admin}
+  index-name: articles
+
 ---
 # Local 환경
 spring:
@@ -67,6 +75,13 @@ spring:
 
   flyway:
     clean-disabled: true  # 운영 DB 보호
+
+opensearch:
+  host: ${OPENSEARCH_HOST}
+  port: 443
+  scheme: https
+  use-aws-signing: true
+  region: ap-northeast-2
 
 logging:
   level:
