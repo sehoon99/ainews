@@ -21,7 +21,7 @@ module "network" {
   public_subnet_id   = module.vpc.public_subnet_ids[0]
   public_subnet_ids  = module.vpc.public_subnet_ids
   private_subnet_ids = module.vpc.private_subnet_ids
-  enable_nat         = true
+  enable_nat         = false
 }
 
 module "storage_image" {
@@ -45,14 +45,15 @@ module "rds" {
 
   name       = "${var.project_name}-${var.environment}"
   vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnet_ids
+  subnet_ids = module.vpc.public_subnet_ids
 
   instance_class    = "db.t3.micro"
   allocated_storage = 20
   db_name           = "ainews"
   db_username       = "admin"
 
-  allowed_cidr_blocks = ["10.0.0.0/16"]
+  # Lambda가 VPC 밖에서 실행되므로 0.0.0.0/0 필요 (RDS publicly_accessible = true)
+  allowed_cidr_blocks = ["10.0.0.0/16", "0.0.0.0/0"]
 
   multi_az            = false
   skip_final_snapshot = true
@@ -88,10 +89,8 @@ module "lambda_image_analyzer" {
   enable_sqs = true
   sqs_batch_size = 1 # 이미지 분석은 하나씩 처리
 
-  vpc_config = {
-    subnet_ids         = module.vpc.private_subnet_ids
-    security_group_ids = [module.rds.security_group_id]
-  }
+  # VPC 설정 제거 - RDS가 public access이므로 Lambda는 VPC 밖에서 실행
+  # 이렇게 하면 NAT Gateway 없이도 인터넷(Sightengine API) 접근 가능
 
   environment_variables = {
     DB_HOST                        = module.rds.address
@@ -118,17 +117,18 @@ module "lambda_image_analyzer" {
 }
 
 # Bastion Host for Session Manager (RDS 접속용)
-module "bastion" {
-  source = "../../modules/bastion"
-
-  name      = "${var.project_name}-${var.environment}"
-  vpc_id    = module.vpc.vpc_id
-  subnet_id = module.vpc.private_subnet_ids[0]
-
-  instance_type = "t3.micro"
-
-  tags = {
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
+# TODO: RDS 프라이빗 전환 시 주석 해제
+# module "bastion" {
+#   source = "../../modules/bastion"
+#
+#   name      = "${var.project_name}-${var.environment}"
+#   vpc_id    = module.vpc.vpc_id
+#   subnet_id = module.vpc.private_subnet_ids[0]
+#
+#   instance_type = "t3.micro"
+#
+#   tags = {
+#     Project     = var.project_name
+#     Environment = var.environment
+#   }
+# }

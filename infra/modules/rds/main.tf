@@ -5,6 +5,9 @@ resource "aws_db_subnet_group" "this" {
   tags = {
     Name = "${var.name}-db-subnet"
   }
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_security_group" "this" {
@@ -54,7 +57,8 @@ resource "aws_secretsmanager_secret_version" "this" {
 }
 
 resource "aws_db_parameter_group" "this" {
-  name   = "${var.name}-mysql-params"
+  #name   = "${var.name}-mysql-params"
+  name_prefix = "${var.name}-mysql-params-"
   family = "mysql8.0"
 
   parameter {
@@ -74,6 +78,9 @@ resource "aws_db_parameter_group" "this" {
 
   tags = {
     Name = "${var.name}-mysql-params"
+  }
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -98,7 +105,7 @@ resource "aws_db_instance" "this" {
   parameter_group_name   = aws_db_parameter_group.this.name
 
   multi_az            = var.multi_az
-  publicly_accessible = false
+  publicly_accessible = true
 
   backup_retention_period = 7
   backup_window           = "03:00-04:00"
