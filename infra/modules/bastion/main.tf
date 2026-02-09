@@ -74,6 +74,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = [aws_security_group.bastion.id]
 
   # No SSH key needed - using Session Manager
+  # Private subnet이므로 public IP 불필요
   associate_public_ip_address = false
 
   # Install MySQL client
