@@ -38,7 +38,7 @@ pipeline {
             steps {
                 sh '''
                     cp news-crawler/*.py lambda/news-crawler/
-                    pip install -t lambda/news-crawler/ -r lambda/news-crawler/requirements.txt
+                    pip3 install -t lambda/news-crawler/ -r lambda/news-crawler/requirements.txt
                     find lambda/news-crawler/ -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
                     find lambda/news-crawler/ -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
                     find lambda/news-crawler/ -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
