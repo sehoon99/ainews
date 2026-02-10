@@ -20,7 +20,11 @@ pipeline {
 
         stage('Backend Build') {
             steps {
-                sh './gradlew :backend:ainews-server:build -x test'
+                sh '''
+                    export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
+                    export PATH=$JAVA_HOME/bin:$PATH
+                    ./gradlew :backend:ainews-server:build -x test
+                '''
             }
         }
 
