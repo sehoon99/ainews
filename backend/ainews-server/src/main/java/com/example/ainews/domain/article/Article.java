@@ -15,7 +15,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
@@ -39,18 +38,20 @@ public class Article {
     @Column(nullable = false, length = 500)
     private String title;
 
-    @Lob
-    @Column(nullable = false, columnDefinition = "LONGTEXT")
+    @Column(columnDefinition = "TEXT")
     private String content;
 
-    @Column(name = "source_url", nullable = false, unique = true, length = 500)
+    @Column(name = "source_url", nullable = false, columnDefinition = "TEXT")
     private String sourceUrl;
+
+    @Column(name = "source_url_hash", nullable = false, length = 64, unique = true)
+    private String sourceUrlHash;
 
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
 
-    @Column(name = "crawled_at")
-    private LocalDateTime crawledAt;
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 
     @OneToMany(mappedBy = "article")
     private List<ImageAnalysis> imageAnalyses = new ArrayList<>();
@@ -66,7 +67,7 @@ public class Article {
         this.content = content;
         this.sourceUrl = sourceUrl;
         this.publishedAt = publishedAt;
-        this.crawledAt = LocalDateTime.now();
+        this.createdAt = LocalDateTime.now();
     }
 
     public Long getId() {
@@ -121,8 +122,16 @@ public class Article {
         this.publishedAt = publishedAt;
     }
 
-    public LocalDateTime getCrawledAt() {
-        return crawledAt;
+    public String getSourceUrlHash() {
+        return sourceUrlHash;
+    }
+
+    public void setSourceUrlHash(String sourceUrlHash) {
+        this.sourceUrlHash = sourceUrlHash;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
     }
 
     public List<ImageAnalysis> getImageAnalyses() {

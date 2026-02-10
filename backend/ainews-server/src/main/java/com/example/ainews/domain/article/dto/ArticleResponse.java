@@ -12,7 +12,7 @@ public record ArticleResponse(
         String content,
         String sourceUrl,
         LocalDateTime publishedAt,
-        LocalDateTime crawledAt
+        LocalDateTime createdAt
 ) {
 
     public static ArticleResponse from(Article article) {
@@ -24,7 +24,7 @@ public record ArticleResponse(
                 article.getContent(),
                 article.getSourceUrl(),
                 article.getPublishedAt(),
-                article.getCrawledAt()
+                article.getCreatedAt()
         );
     }
 }
