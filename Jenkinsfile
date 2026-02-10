@@ -8,6 +8,7 @@ pipeline {
     environment {
         AWS_DEFAULT_REGION = "ap-northeast-2"
         DEPLOY_BUCKET      = "ainews-prod-deploy"
+        JAVA_HOME          = "/usr/lib/jvm/java-17-amazon-corretto"
     }
 
     stages {
