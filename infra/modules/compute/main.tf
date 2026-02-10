@@ -89,6 +89,14 @@ resource "aws_security_group" "app" {
   vpc_id      = var.vpc_id
 
   ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     description = "App port"
     from_port   = var.app_port
     to_port     = var.app_port
@@ -121,14 +129,27 @@ resource "aws_instance" "app" {
 #!/bin/bash
 set -ex
 
-# Install Java 17
-dnf install -y java-17-amazon-corretto
+# Install and start SSM Agent (minimal AMI에는 미포함)
+dnf install -y amazon-ssm-agent
+systemctl enable amazon-ssm-agent
+systemctl start amazon-ssm-agent
+
+# Install Java 17 and jq
+dnf install -y java-17-amazon-corretto jq
 
 # Create app directory
 mkdir -p /opt/ainews
 
-# Create systemd service
-cat > /etc/systemd/system/ainews.service <<'UNIT'
+# Fetch DB credentials from Secrets Manager
+DB_SECRET=$(aws secretsmanager get-secret-value --secret-id ${var.db_secret_name} --region ${var.region} --query SecretString --output text)
+DB_HOST=$(echo $DB_SECRET | jq -r '.host')
+DB_PORT=$(echo $DB_SECRET | jq -r '.port')
+DB_USERNAME=$(echo $DB_SECRET | jq -r '.username')
+DB_PASSWORD=$(echo $DB_SECRET | jq -r '.password')
+DB_NAME=$(echo $DB_SECRET | jq -r '.dbname')
+
+# Create systemd service with DB environment variables
+cat > /etc/systemd/system/ainews.service <<UNIT
 [Unit]
 Description=AiNews Spring Boot Application
 After=network.target
@@ -137,7 +158,13 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/ainews
-ExecStart=/usr/bin/java -jar /opt/ainews/app.jar --spring.profiles.active=prod
+Environment=SPRING_PROFILES_ACTIVE=prod
+Environment=DB_HOST=$DB_HOST
+Environment=DB_PORT=$DB_PORT
+Environment=DB_USERNAME=$DB_USERNAME
+Environment=DB_PASSWORD=$DB_PASSWORD
+Environment=DB_NAME=$DB_NAME
+ExecStart=/usr/bin/java -jar /opt/ainews/app.jar
 Restart=on-failure
 RestartSec=10
 

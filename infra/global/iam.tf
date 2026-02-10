@@ -17,3 +17,4 @@ resource "aws_iam_user_policy_attachment" "ghlee_admin" {
   user       = aws_iam_user.ghlee.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
+
