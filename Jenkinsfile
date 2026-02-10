@@ -34,35 +34,6 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2') {
-            steps {
-                script {
-                    def instanceId = sh(
-                        script: "cd infra/envs/p && terraform output -raw ec2_instance_id",
-                        returnStdout: true
-                    ).trim()
-
-                    def commandId = sh(
-                        script: """
-                            aws ssm send-command \
-                                --instance-ids '${instanceId}' \
-                                --document-name 'AWS-RunShellScript' \
-                                --parameters 'commands=["aws s3 cp s3://${DEPLOY_BUCKET}/app.jar /opt/ainews/app.jar","systemctl restart ainews"]' \
-                                --query 'Command.CommandId' \
-                                --output text
-                        """,
-                        returnStdout: true
-                    ).trim()
-
-                    sh """
-                        aws ssm wait command-executed \
-                            --command-id '${commandId}' \
-                            --instance-id '${instanceId}' || true
-                    """
-                }
-            }
-        }
-
         stage('Package Crawler Lambda') {
             steps {
                 sh '''
@@ -96,6 +67,35 @@ pipeline {
                 input message: 'Apply Terraform changes?', ok: 'Apply'
                 dir('infra/envs/p') {
                     sh 'terraform apply -auto-approve'
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                script {
+                    def instanceId = sh(
+                        script: "cd infra/envs/p && terraform output -raw ec2_instance_id",
+                        returnStdout: true
+                    ).trim()
+
+                    def commandId = sh(
+                        script: """
+                            aws ssm send-command \
+                                --instance-ids '${instanceId}' \
+                                --document-name 'AWS-RunShellScript' \
+                                --parameters 'commands=["aws s3 cp s3://${DEPLOY_BUCKET}/app.jar /opt/ainews/app.jar","systemctl restart ainews"]' \
+                                --query 'Command.CommandId' \
+                                --output text
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    sh """
+                        aws ssm wait command-executed \
+                            --command-id '${commandId}' \
+                            --instance-id '${instanceId}' || true
+                    """
                 }
             }
         }
