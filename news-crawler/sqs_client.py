@@ -10,6 +10,10 @@ from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 
+# 기본 설정
+DEFAULT_REGION = 'ap-northeast-2'
+DEFAULT_QUEUE_URL = 'https://sqs.ap-northeast-2.amazonaws.com/633309913072/ainews-prod-image-analysis'
+
 
 class SQSClient:
     """AWS SQS 클라이언트"""
@@ -134,12 +138,15 @@ class SQSClient:
         return results
 
 
-def create_sqs_client() -> Optional[SQSClient]:
+def create_sqs_client(queue_url: str = None) -> SQSClient:
     """
-    환경변수에서 SQS 클라이언트 생성
-    SQS_QUEUE_URL이 없으면 None 반환
+    SQS 클라이언트 생성
+
+    Args:
+        queue_url: SQS 큐 URL (없으면 환경변수 또는 기본값 사용)
+
+    Returns:
+        SQSClient 인스턴스
     """
-    queue_url = os.environ.get('SQS_QUEUE_URL')
-    if not queue_url:
-        return None
-    return SQSClient(queue_url=queue_url)
+    url = queue_url or os.environ.get('SQS_QUEUE_URL') or DEFAULT_QUEUE_URL
+    return SQSClient(queue_url=url)

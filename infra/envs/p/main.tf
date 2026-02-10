@@ -40,6 +40,29 @@ module "storage_web" {
   enable_versioning = true
 }
 
+module "storage_deploy" {
+  source = "../../modules/storage"
+
+  name              = "${var.project_name}-deploy"
+  bucket_name       = "${var.project_name}-${var.environment}-deploy"
+  enable_versioning = true
+}
+
+module "compute_server" {
+  source = "../../modules/compute"
+
+  name                 = "${var.project_name}-${var.environment}"
+  vpc_id               = module.vpc.vpc_id
+  subnet_id            = module.vpc.public_subnet_ids[0]
+  deploy_bucket        = module.storage_deploy.bucket_id
+  secrets_manager_arns = [module.rds.secret_arn]
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
 module "rds" {
   source = "../../modules/rds"
 
@@ -109,6 +132,55 @@ module "lambda_image_analyzer" {
   secrets_manager_arns = [
     module.rds.secret_arn,
   ]
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# Lambda function for news crawling
+module "lambda_news_crawler" {
+  source = "../../modules/lambda"
+
+  name        = "${var.project_name}-${var.environment}-news-crawler"
+  source_path = "${path.module}/../../../lambda/news-crawler"
+  handler     = "handler.lambda_handler"
+  runtime     = "python3.11"
+  timeout     = 900  # 15분 최대
+  memory_size = 512  # newspaper3k/lxml 파싱 메모리
+
+  enable_sqs     = false
+  sqs_send_arns  = [module.sqs_image_analysis.queue_arn]
+
+  environment_variables = {
+    SQS_QUEUE_URL     = module.sqs_image_analysis.queue_url
+    DB_SECRET_ARN     = module.rds.secret_arn
+    DB_HOST           = module.rds.address
+    DB_PORT           = tostring(module.rds.port)
+    DB_NAME           = module.rds.db_name
+    COUNT_PER_SECTION = "15"
+  }
+
+  secrets_manager_arns = [
+    module.rds.secret_arn,
+  ]
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+# EventBridge schedule for news crawler (every 4 hours)
+module "eventbridge_news_crawler" {
+  source = "../../modules/eventbridge"
+
+  name                 = "${var.project_name}-${var.environment}-news-crawler-schedule"
+  description          = "Trigger news crawler Lambda every 4 hours"
+  schedule_expression  = "rate(4 hours)"
+  lambda_arn           = module.lambda_news_crawler.function_arn
+  lambda_function_name = module.lambda_news_crawler.function_name
 
   tags = {
     Project     = var.project_name

@@ -1,11 +1,14 @@
-output "ecs_cluster_id" {
-  value = var.create_ecs ? aws_ecs_cluster.this[0].id : null
+output "instance_id" {
+  description = "EC2 instance ID"
+  value       = aws_instance.app.id
 }
 
-output "ecr_repository_url" {
-  value = var.create_ecr ? aws_ecr_repository.this[0].repository_url : null
+output "security_group_id" {
+  description = "Application security group ID"
+  value       = aws_security_group.app.id
 }
 
-output "app_security_group_id" {
-  value = aws_security_group.app.id
+output "public_ip" {
+  description = "EC2 public IP address"
+  value       = aws_instance.app.public_ip
 }

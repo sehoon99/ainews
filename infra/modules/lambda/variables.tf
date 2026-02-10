@@ -77,6 +77,12 @@ variable "secrets_manager_arns" {
   default     = []
 }
 
+variable "sqs_send_arns" {
+  description = "List of SQS queue ARNs that Lambda can send messages to"
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "A map of tags to add to all resources"
   type        = map(string)
