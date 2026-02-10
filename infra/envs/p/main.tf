@@ -172,7 +172,7 @@ module "lambda_news_crawler" {
   }
 }
 
-# EventBridge schedule for news crawler (every 4 hours!)
+# EventBridge schedule for news crawler (every 4 hours!!)
 module "eventbridge_news_crawler" {
   source = "../../modules/eventbridge"
 
