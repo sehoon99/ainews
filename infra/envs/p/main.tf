@@ -56,6 +56,7 @@ module "compute_server" {
   subnet_id            = module.vpc.public_subnet_ids[0]
   deploy_bucket        = module.storage_deploy.bucket_id
   secrets_manager_arns = [module.rds.secret_arn]
+  db_secret_name       = "${var.project_name}-${var.environment}-db-credentials"
 
   tags = {
     Project     = var.project_name
