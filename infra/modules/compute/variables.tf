@@ -42,6 +42,18 @@ variable "allowed_cidr_blocks" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "db_secret_name" {
+  description = "Secrets Manager secret name for DB credentials"
+  type        = string
+  default     = ""
+}
+
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "ap-northeast-2"
+}
+
 variable "tags" {
   description = "Tags for resources"
   type        = map(string)
