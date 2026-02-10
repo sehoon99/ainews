@@ -40,10 +40,9 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
-# SQS access policy
+# SQS receive policy (for Lambda triggered by SQS)
 resource "aws_iam_role_policy" "sqs" {
-  #count = var.sqs_arn != null ? 1 : 0
-  count = var.enable_sqs != null ? 1 : 0
+  count = var.enable_sqs ? 1 : 0
   name  = "${var.name}-sqs-policy"
   role  = aws_iam_role.lambda.id
 
@@ -58,6 +57,27 @@ resource "aws_iam_role_policy" "sqs" {
           "sqs:GetQueueAttributes"
         ]
         Resource = var.sqs_arn
+      }
+    ]
+  })
+}
+
+# SQS send policy (for Lambda that sends messages to SQS)
+resource "aws_iam_role_policy" "sqs_send" {
+  count = length(var.sqs_send_arns) > 0 ? 1 : 0
+  name  = "${var.name}-sqs-send-policy"
+  role  = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:GetQueueUrl"
+        ]
+        Resource = var.sqs_send_arns
       }
     ]
   })
@@ -142,8 +162,7 @@ resource "aws_lambda_function" "this" {
 
 # SQS Event Source Mapping
 resource "aws_lambda_event_source_mapping" "sqs" {
-  #count            = var.sqs_arn != null ? 1 : 0
-  count            = var.enable_sqs != null ? 1 : 0
+  count            = var.enable_sqs ? 1 : 0
   event_source_arn = var.sqs_arn
   function_name    = aws_lambda_function.this.arn
   batch_size       = var.sqs_batch_size

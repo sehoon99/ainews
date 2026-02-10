@@ -1,0 +1,3 @@
+rootProject.name = 'ainews'
+
+include 'backend:ainews-server'

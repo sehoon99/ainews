@@ -2,14 +2,22 @@
 MySQL 데이터베이스 클라이언트
 - providers, authors, articles 테이블 INSERT
 - URL 중복 체크
+- AWS Secrets Manager에서 자격증명 자동 로드
 """
 
+import hashlib
+import json
 import os
 from datetime import datetime
 from typing import Optional
 
+import boto3
 import pymysql
 from pymysql.cursors import DictCursor
+
+# 기본 설정
+DEFAULT_REGION = 'ap-northeast-2'
+DEFAULT_SECRET_NAME = 'ainews-prod-db-credentials'
 
 
 class DBClient:
@@ -26,8 +34,8 @@ class DBClient:
         """
         DB 클라이언트 초기화
 
-        환경 변수:
-            DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+        환경 변수 또는 직접 파라미터로 설정 가능.
+        from_secrets_manager()를 사용하면 AWS에서 자동 로드.
         """
         self.host = host or os.environ.get('DB_HOST', 'localhost')
         self.port = port or int(os.environ.get('DB_PORT', 3306))
@@ -35,6 +43,34 @@ class DBClient:
         self.password = password or os.environ.get('DB_PASSWORD', '')
         self.database = database or os.environ.get('DB_NAME', 'ainews')
         self._connection = None
+
+    @classmethod
+    def from_secrets_manager(
+        cls,
+        secret_name: str = DEFAULT_SECRET_NAME,
+        region: str = DEFAULT_REGION,
+    ) -> 'DBClient':
+        """
+        AWS Secrets Manager에서 DB 자격증명을 읽어서 클라이언트 생성
+
+        Args:
+            secret_name: Secrets Manager 시크릿 이름
+            region: AWS 리전
+
+        Returns:
+            DBClient 인스턴스
+        """
+        client = boto3.client('secretsmanager', region_name=region)
+        response = client.get_secret_value(SecretId=secret_name)
+        secret = json.loads(response['SecretString'])
+
+        return cls(
+            host=secret['host'],
+            port=int(secret.get('port', 3306)),
+            user=secret['username'],
+            password=secret['password'],
+            database=secret['dbname'],
+        )
 
     def connect(self) -> pymysql.Connection:
         """DB 연결"""
@@ -64,13 +100,19 @@ class DBClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    @staticmethod
+    def hash_url(url: str) -> str:
+        """URL을 SHA256 해시로 변환"""
+        return hashlib.sha256(url.encode('utf-8')).hexdigest()
+
     def url_exists(self, source_url: str) -> bool:
-        """URL 중복 체크"""
+        """URL 중복 체크 (해시 기반)"""
+        url_hash = self.hash_url(source_url)
         conn = self.connect()
         with conn.cursor() as cursor:
             cursor.execute(
-                'SELECT 1 FROM articles WHERE source_url = %s LIMIT 1',
-                (source_url,)
+                'SELECT 1 FROM articles WHERE source_url_hash = %s LIMIT 1',
+                (url_hash,)
             )
             return cursor.fetchone() is not None
 
@@ -137,17 +179,11 @@ class DBClient:
             result = cursor.fetchone()
 
             if result:
-                # article_count 증가
-                cursor.execute(
-                    'UPDATE authors SET article_count = article_count + 1 WHERE id = %s',
-                    (result['id'],)
-                )
-                conn.commit()
                 return result['id']
 
             # 새 author 생성
             cursor.execute(
-                'INSERT INTO authors (provider_id, name, email, article_count) VALUES (%s, %s, %s, 1)',
+                'INSERT INTO authors (provider_id, name, email) VALUES (%s, %s, %s)',
                 (provider_id, name, email)
             )
             conn.commit()
@@ -178,17 +214,18 @@ class DBClient:
         Returns:
             article_id or None (중복 시)
         """
+        url_hash = self.hash_url(source_url)
         conn = self.connect()
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
                     '''
                     INSERT INTO articles
-                        (provider_id, author_id, portal, title, content, source_url, published_at)
+                        (provider_id, author_id, portal, title, content, source_url, source_url_hash, published_at)
                     VALUES
-                        (%s, %s, %s, %s, %s, %s, %s)
+                        (%s, %s, %s, %s, %s, %s, %s, %s)
                     ''',
-                    (provider_id, author_id, portal, title, content, source_url, published_at)
+                    (provider_id, author_id, portal, title, content, source_url, url_hash, published_at)
                 )
                 conn.commit()
                 return cursor.lastrowid

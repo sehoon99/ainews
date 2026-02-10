@@ -853,8 +853,8 @@ def crawl_and_insert_db(
     if base_dir is None:
         base_dir = DATA_DIR
 
-    # DB 클라이언트 초기화
-    db = DBClient()
+    # DB 클라이언트 초기화 (Secrets Manager에서 자동 로드)
+    db = DBClient.from_secrets_manager()
     sqs = create_sqs_client()
 
     stats = {
