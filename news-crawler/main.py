@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from newspaper import Article
 
 from db_client import DBClient
+from keyword_extractor import extract_keywords
 from sqs_client import create_sqs_client
 
 
@@ -864,7 +865,11 @@ def crawl_and_insert_db(
         'failed': 0,
         'no_images': 0,
         'sqs_sent': 0,
+        'keywords_extracted': 0,
     }
+
+    # 키워드 추출용 (article_id, content) 수집
+    article_contents = []
 
     # JSON 저장용 (save_json=True 시)
     portal_articles = {'naver': [], 'daum': [], 'others': []}
@@ -908,6 +913,11 @@ def crawl_and_insert_db(
                 stats['success'] += 1
                 print(f'    → 성공 (article_id={article_id}, 이미지 {len(images)}개)')
 
+                # 키워드 추출용 수집
+                content = data.get('content', '')
+                if content:
+                    article_contents.append((article_id, content))
+
                 # SQS 전송 (이미지 분석 요청)
                 if sqs:
                     message_id = sqs.send_message(
@@ -927,6 +937,22 @@ def crawl_and_insert_db(
             except Exception as e:
                 print(f'    → 오류: {e}')
                 stats['failed'] += 1
+
+        # 키워드 추출 및 DB 업데이트
+        if article_contents:
+            print(f'\n키워드 추출 중... ({len(article_contents)}개 기사)')
+            try:
+                contents = [c for _, c in article_contents]
+                keywords_list = extract_keywords(contents)
+                pairs = [
+                    (aid, kw)
+                    for (aid, _), kw in zip(article_contents, keywords_list)
+                ]
+                updated = db.update_batch_keywords(pairs)
+                stats['keywords_extracted'] = updated
+                print(f'키워드 추출 완료: {updated}개 기사 업데이트')
+            except Exception as e:
+                print(f'키워드 추출 실패: {e}')
 
     finally:
         db.close()
@@ -971,6 +997,8 @@ def crawl_and_insert_db(
     print(f'  - 중복 스킵: {stats["duplicate"]}개')
     print(f'  - 이미지 없음: {stats["no_images"]}개')
     print(f'  - 실패: {stats["failed"]}개')
+    if stats['keywords_extracted']:
+        print(f'  - 키워드 추출: {stats["keywords_extracted"]}개')
     if sqs:
         print(f'  - SQS 전송: {stats["sqs_sent"]}개')
     if save_json:

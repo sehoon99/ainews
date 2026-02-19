@@ -303,6 +303,49 @@ class DBClient:
             published_at=published_at,
         )
 
+    def update_article_keywords(self, article_id: int, keywords: str) -> None:
+        """
+        기사의 keywords 컬럼 업데이트
+
+        Args:
+            article_id: 기사 ID
+            keywords: 콤마 구분 키워드 문자열
+        """
+        conn = self.connect()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                'UPDATE articles SET keywords = %s WHERE id = %s',
+                (keywords, article_id)
+            )
+        conn.commit()
+
+    def update_batch_keywords(self, pairs: list[tuple[int, str]]) -> int:
+        """
+        여러 기사의 keywords를 배치 업데이트
+
+        Args:
+            pairs: [(article_id, "키워드1,키워드2,..."), ...] 리스트
+
+        Returns:
+            업데이트된 행 수
+        """
+        if not pairs:
+            return 0
+
+        conn = self.connect()
+        updated = 0
+        with conn.cursor() as cursor:
+            for article_id, keywords in pairs:
+                if not keywords:
+                    continue
+                cursor.execute(
+                    'UPDATE articles SET keywords = %s WHERE id = %s',
+                    (keywords, article_id)
+                )
+                updated += cursor.rowcount
+        conn.commit()
+        return updated
+
     def get_article_images(self, article_id: int) -> list[str]:
         """
         기사의 이미지 URL 목록 조회 (articles 테이블에는 images 컬럼이 없으므로,
