@@ -41,6 +41,9 @@ public class Article {
     @Column(columnDefinition = "TEXT")
     private String content;
 
+    @Column(length = 500)
+    private String keywords;
+
     @Column(name = "source_url", nullable = false, columnDefinition = "TEXT")
     private String sourceUrl;
 
@@ -104,6 +107,14 @@ public class Article {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getKeywords() {
+        return keywords;
+    }
+
+    public void setKeywords(String keywords) {
+        this.keywords = keywords;
     }
 
     public String getSourceUrl() {
