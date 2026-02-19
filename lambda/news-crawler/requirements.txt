@@ -4,3 +4,5 @@ newspaper3k
 lxml
 pymysql
 boto3
+scikit-learn
+konlpy
