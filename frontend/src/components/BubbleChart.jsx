@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 
-export default function BubbleChart({ data, width = 900, height = 700 }) {
+export default function BubbleChart({ data, width = 900, height = 700, onBubbleClick }) {
   const svgRef = useRef(null)
   const containerRef = useRef(null)
   const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, data: null })
@@ -73,7 +73,7 @@ export default function BubbleChart({ data, width = 900, height = 700 }) {
       .attr('r', d => d.r)
       .attr('fill', d => colorScale(d.ratio))
       .attr('opacity', d => opacityScale(d.ratio))
-      .attr('stroke', d => d.ratio > 0.7 ? '#93c5fd' : '#3f3f46')
+      .attr('stroke', d => d.ratio > 0.7 ? '#93c5fd' : '#1e2d4a')
       .attr('stroke-width', d => d.ratio > 0.7 ? 2 : 1)
 
     // 키워드 텍스트
@@ -94,6 +94,11 @@ export default function BubbleChart({ data, width = 900, height = 700 }) {
           d3.select(this).text(d.keyword.slice(0, chars) + '..')
         }
       })
+
+    // 클릭 이벤트
+    nodeGroup.on('click', function (event, d) {
+      if (onBubbleClick) onBubbleClick(d.keyword)
+    })
 
     // 마우스 이벤트
     nodeGroup
@@ -123,7 +128,7 @@ export default function BubbleChart({ data, width = 900, height = 700 }) {
       .on('mouseleave', function (event, d) {
         d3.select(this).select('circle')
           .transition().duration(150)
-          .attr('stroke', d.ratio > 0.7 ? '#93c5fd' : '#3f3f46')
+          .attr('stroke', d.ratio > 0.7 ? '#93c5fd' : '#1e2d4a')
           .attr('stroke-width', d.ratio > 0.7 ? 2 : 1)
           .attr('opacity', opacityScale(d.ratio))
 
@@ -226,8 +231,8 @@ const styles = {
   tooltip: {
     position: 'absolute',
     transform: 'translate(-50%, -100%)',
-    backgroundColor: '#27272a',
-    border: '1px solid #3f3f46',
+    backgroundColor: '#111827',
+    border: '1px solid #1e2d4a',
     borderRadius: 10,
     padding: '12px 16px',
     pointerEvents: 'none',
@@ -241,7 +246,7 @@ const styles = {
     color: '#f4f4f5',
     marginBottom: 8,
     paddingBottom: 8,
-    borderBottom: '1px solid #3f3f46',
+    borderBottom: '1px solid #1e2d4a',
   },
   tooltipRow: {
     display: 'flex',
@@ -262,8 +267,8 @@ const styles = {
     position: 'absolute',
     bottom: 16,
     right: 16,
-    backgroundColor: 'rgba(24,24,27,0.85)',
-    border: '1px solid #3f3f46',
+    backgroundColor: 'rgba(17,24,39,0.9)',
+    border: '1px solid #1e2d4a',
     borderRadius: 10,
     padding: '12px 16px',
     backdropFilter: 'blur(8px)',

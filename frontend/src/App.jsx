@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import BubbleChart from './components/BubbleChart'
-import mockKeywords from './data/mockKeywords'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -9,14 +8,96 @@ const TABS = {
   QUERY: 'query',
 }
 
+const KEYWORDS_SQL = `
+SELECT keyword, COUNT(*) as total_count,
+  SUM(CASE WHEN portal = 'naver' THEN 1 ELSE 0 END) as naver_count,
+  SUM(CASE WHEN portal = 'daum' THEN 1 ELSE 0 END) as daum_count
+FROM (
+  SELECT TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(a.keywords, ',', n.n), ',', -1)) as keyword, a.portal
+  FROM articles a
+  CROSS JOIN (SELECT 1 as n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5) n
+  WHERE a.keywords IS NOT NULL
+  AND n.n <= 1 + LENGTH(a.keywords) - LENGTH(REPLACE(a.keywords, ',', ''))
+) t
+WHERE keyword != ''
+GROUP BY keyword
+ORDER BY total_count DESC
+LIMIT 50`
+
+const runQuery = async (sql) => {
+  const res = await fetch(`${API_URL}/api/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql }),
+  })
+  return res.json()
+}
+
 export default function App() {
   const [tab, setTab] = useState(TABS.MAIN)
+  const [keywords, setKeywords] = useState([])
+  const [keywordsLoading, setKeywordsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchResult, setSearchResult] = useState(null)
+  const [searchLoading, setSearchLoading] = useState(false)
   const [sql, setSql] = useState('SELECT * FROM articles LIMIT 10;')
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+
+  // 페이지 로드 시 DB에서 키워드 데이터 가져오기
+  useEffect(() => {
+    const fetchKeywords = async () => {
+      try {
+        const data = await runQuery(KEYWORDS_SQL)
+        if (data.rows && data.rows.length > 0) {
+          const mapped = data.rows.map(r => ({
+            keyword: r.keyword,
+            total_count: Number(r.total_count),
+            naver_count: Number(r.naver_count),
+            daum_count: Number(r.daum_count),
+            ratio: Number(r.naver_count) / Math.max(Number(r.total_count), 1),
+          }))
+          setKeywords(mapped)
+        }
+      } catch (e) {
+        console.error('키워드 로드 실패:', e)
+      } finally {
+        setKeywordsLoading(false)
+      }
+    }
+    fetchKeywords()
+  }, [])
+
+  // 키워드 검색
+  const searchKeyword = async (query) => {
+    if (!query.trim()) return
+    setSearchLoading(true)
+    setSearchResult(null)
+    try {
+      const searchSql = `SELECT portal, COUNT(*) as cnt FROM articles WHERE keywords LIKE '%${query.trim()}%' GROUP BY portal`
+      const data = await runQuery(searchSql)
+      if (data.rows) {
+        let naver = 0, daum = 0
+        data.rows.forEach(r => {
+          if (r.portal === 'naver') naver = Number(r.cnt)
+          if (r.portal === 'daum') daum = Number(r.cnt)
+        })
+        const total = naver + daum
+        setSearchResult({ keyword: query.trim(), total, naver, daum })
+      }
+    } catch (e) {
+      console.error('검색 실패:', e)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  const handleBubbleClick = (keyword) => {
+    setSearchQuery(keyword)
+    searchKeyword(keyword)
+  }
 
   const executeQuery = async () => {
     if (!sql.trim()) return
@@ -25,13 +106,7 @@ export default function App() {
     setResult(null)
 
     try {
-      const res = await fetch(`${API_URL}/api/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: sql.trim() }),
-      })
-      const data = await res.json()
-
+      const data = await runQuery(sql.trim())
       if (data.error) {
         setError(data.error)
       } else {
@@ -77,7 +152,7 @@ export default function App() {
           <div style={styles.pageHeader}>
             <h2 style={styles.pageTitle}>뉴스 키워드 버블 차트</h2>
             <p style={styles.pageDesc}>
-              원의 크기는 전체 뉴스 수, 색상 농도는 AI 뉴스 비율을 나타냅니다. 마우스를 올려 상세 정보를 확인하세요.
+              원의 크기는 전체 뉴스 수, 색상 농도는 네이버 뉴스 비율을 나타냅니다. 버블을 클릭하면 검색됩니다.
             </p>
           </div>
 
@@ -101,8 +176,7 @@ export default function App() {
                 onBlur={() => setSearchFocused(false)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && searchQuery.trim()) {
-                    // TODO: OpenSearch 연동
-                    console.log('search:', searchQuery)
+                    searchKeyword(searchQuery)
                   }
                 }}
                 placeholder="뉴스 키워드를 검색하세요..."
@@ -110,7 +184,7 @@ export default function App() {
               {searchQuery && (
                 <button
                   style={styles.searchClear}
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => { setSearchQuery(''); setSearchResult(null) }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" />
@@ -121,7 +195,40 @@ export default function App() {
             </div>
           </div>
 
-          <BubbleChart data={mockKeywords} />
+          {/* 검색 결과 */}
+          {searchLoading && <div style={styles.searchLoading}>검색 중...</div>}
+          {searchResult && (
+            <div style={styles.searchResultCard}>
+              <div style={styles.searchResultHeader}>
+                <span style={styles.searchResultKeyword}>{searchResult.keyword}</span>
+                <span style={styles.searchResultTotal}>총 {searchResult.total}건</span>
+              </div>
+              <div style={styles.portalRow}>
+                <div style={styles.portalBadgeNaver}>네이버</div>
+                <span style={styles.portalCount}>{searchResult.naver}건</span>
+                <div style={styles.progressBar}>
+                  <div style={{ ...styles.progressFill, width: `${searchResult.total ? (searchResult.naver / searchResult.total * 100) : 0}%`, backgroundColor: '#22c55e' }} />
+                </div>
+                <span style={styles.portalPercent}>{searchResult.total ? (searchResult.naver / searchResult.total * 100).toFixed(1) : 0}%</span>
+              </div>
+              <div style={styles.portalRow}>
+                <div style={styles.portalBadgeDaum}>다음</div>
+                <span style={styles.portalCount}>{searchResult.daum}건</span>
+                <div style={styles.progressBar}>
+                  <div style={{ ...styles.progressFill, width: `${searchResult.total ? (searchResult.daum / searchResult.total * 100) : 0}%`, backgroundColor: '#3b82f6' }} />
+                </div>
+                <span style={styles.portalPercent}>{searchResult.total ? (searchResult.daum / searchResult.total * 100).toFixed(1) : 0}%</span>
+              </div>
+            </div>
+          )}
+
+          {keywordsLoading ? (
+            <div style={{ textAlign: 'center', padding: 60, color: '#71717a' }}>키워드 데이터 로딩 중...</div>
+          ) : keywords.length > 0 ? (
+            <BubbleChart data={keywords} onBubbleClick={handleBubbleClick} />
+          ) : (
+            <div style={{ textAlign: 'center', padding: 60, color: '#71717a' }}>키워드 데이터가 없습니다</div>
+          )}
         </div>
       )}
 
@@ -189,7 +296,7 @@ const styles = {
   root: {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     color: '#e4e4e7',
-    backgroundColor: '#09090b',
+    backgroundColor: '#0c1222',
     minHeight: '100vh',
   },
   // 헤더
@@ -198,8 +305,8 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px 24px',
-    backgroundColor: '#18181b',
-    borderBottom: '1px solid #27272a',
+    backgroundColor: '#181800',
+    borderBottom: '1px solid #1e2d4a',
   },
   logo: {
     fontSize: 18,
@@ -226,8 +333,8 @@ const styles = {
     fontSize: 13,
     fontWeight: 500,
     color: '#f4f4f5',
-    backgroundColor: '#27272a',
-    border: '1px solid #3f3f46',
+    backgroundColor: '#1e2d4a',
+    border: '1px solid #2a3f5f',
     borderRadius: 6,
     cursor: 'pointer',
   },
@@ -259,8 +366,8 @@ const styles = {
     alignItems: 'center',
     gap: 10,
     padding: '10px 16px',
-    backgroundColor: '#18181b',
-    border: '1px solid #3f3f46',
+    backgroundColor: '#111827',
+    border: '1px solid #1e2d4a',
     borderRadius: 12,
     transition: 'border-color 0.2s, box-shadow 0.2s',
   },
@@ -286,12 +393,95 @@ const styles = {
     width: 24,
     height: 24,
     padding: 0,
-    backgroundColor: '#27272a',
+    backgroundColor: '#1e2d4a',
     border: 'none',
     borderRadius: 6,
-    color: '#a1a1aa',
+    color: '#94a3b8',
     cursor: 'pointer',
     flexShrink: 0,
+  },
+  // 검색 결과
+  searchLoading: {
+    padding: '12px 0',
+    fontSize: 14,
+    color: '#a1a1aa',
+  },
+  searchResultCard: {
+    marginBottom: 20,
+    padding: '16px 20px',
+    backgroundColor: '#111827',
+    border: '1px solid #1e2d4a',
+    borderRadius: 12,
+    maxWidth: 560,
+  },
+  searchResultHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottom: '1px solid #1e2d4a',
+  },
+  searchResultKeyword: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#f4f4f5',
+  },
+  searchResultTotal: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#a1a1aa',
+  },
+  portalRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '6px 0',
+  },
+  portalBadgeNaver: {
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: 4,
+    backgroundColor: '#166534',
+    color: '#86efac',
+    minWidth: 42,
+    textAlign: 'center',
+  },
+  portalBadgeDaum: {
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: 4,
+    backgroundColor: '#1e3a5f',
+    color: '#93c5fd',
+    minWidth: 42,
+    textAlign: 'center',
+  },
+  portalCount: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#e4e4e7',
+    minWidth: 40,
+    textAlign: 'right',
+  },
+  progressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#1e2d4a',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+    transition: 'width 0.3s',
+  },
+  portalPercent: {
+    fontSize: 12,
+    color: '#a1a1aa',
+    minWidth: 44,
+    textAlign: 'right',
   },
   // 쿼리 페이지
   queryContent: {
@@ -304,9 +494,9 @@ const styles = {
     padding: '12px',
     fontSize: 14,
     fontFamily: '"SF Mono", "Fira Code", "Fira Mono", Menlo, monospace',
-    backgroundColor: '#27272a',
+    backgroundColor: '#111827',
     color: '#e4e4e7',
-    border: '1px solid #3f3f46',
+    border: '1px solid #1e2d4a',
     borderRadius: 8,
     resize: 'vertical',
     outline: 'none',
@@ -346,7 +536,7 @@ const styles = {
   tableWrap: {
     overflowX: 'auto',
     borderRadius: 8,
-    border: '1px solid #3f3f46',
+    border: '1px solid #1e2d4a',
   },
   table: {
     width: '100%',
@@ -357,22 +547,22 @@ const styles = {
   th: {
     textAlign: 'left',
     padding: '8px 12px',
-    backgroundColor: '#27272a',
-    color: '#a1a1aa',
+    backgroundColor: '#111827',
+    color: '#94a3b8',
     fontWeight: 600,
-    borderBottom: '1px solid #3f3f46',
+    borderBottom: '1px solid #1e2d4a',
     whiteSpace: 'nowrap',
   },
   td: {
     padding: '6px 12px',
-    borderBottom: '1px solid #27272a',
+    borderBottom: '1px solid #152035',
     maxWidth: 300,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
   evenRow: {
-    backgroundColor: '#1f1f23',
+    backgroundColor: '#0f1a2e',
   },
   null: {
     color: '#71717a',
