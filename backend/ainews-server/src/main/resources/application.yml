@@ -31,6 +31,14 @@ spring:
     locations: classpath:db/migration
     validate-on-migrate: true
 
+ainews:
+  keyword-rank:
+    archive-path: ${KEYWORD_RANK_ARCHIVE_PATH:./keyword-rank-archives}
+  ses:
+    sender-email: ${SES_SENDER_EMAIL:noreply@ainews.example.com}
+    region: ap-northeast-2
+    base-url: ${APP_BASE_URL:http://localhost:8080}
+
 ---
 # Local 환경
 spring:
