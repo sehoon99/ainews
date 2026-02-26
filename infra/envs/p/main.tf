@@ -48,6 +48,18 @@ module "storage_deploy" {
   enable_versioning = true
 }
 
+module "ses" {
+  source = "../../modules/ses"
+
+  name         = "${var.project_name}-${var.environment}"
+  sender_email = var.ses_sender_email
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
 module "compute_server" {
   source = "../../modules/compute"
 
@@ -57,6 +69,9 @@ module "compute_server" {
   deploy_bucket        = module.storage_deploy.bucket_id
   secrets_manager_arns = [module.rds.secret_arn]
   db_secret_name       = "${var.project_name}-${var.environment}-db-credentials"
+  ses_send_policy_arn  = module.ses.ses_send_policy_arn
+  ses_sender_email     = var.ses_sender_email
+  app_base_url         = var.app_base_url
 
   tags = {
     Project     = var.project_name

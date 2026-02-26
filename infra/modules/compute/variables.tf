@@ -54,6 +54,24 @@ variable "region" {
   default     = "ap-northeast-2"
 }
 
+variable "ses_send_policy_arn" {
+  description = "IAM policy ARN for SES send permissions"
+  type        = string
+  default     = ""
+}
+
+variable "ses_sender_email" {
+  description = "SES sender email address"
+  type        = string
+  default     = ""
+}
+
+variable "app_base_url" {
+  description = "Application base URL for links in emails"
+  type        = string
+  default     = "http://localhost:8080"
+}
+
 variable "tags" {
   description = "Tags for resources"
   type        = map(string)

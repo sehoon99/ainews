@@ -1,19 +1,25 @@
 import { useState, useEffect } from 'react'
 import BubbleChart from './components/BubbleChart'
+import WeeklyRankPanel from './components/WeeklyRankPanel'
+import EmailSubscription from './components/EmailSubscription'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
 const TABS = {
   MAIN: 'main',
   QUERY: 'query',
+  SUBSCRIBE: 'subscribe',
 }
 
 const KEYWORDS_SQL = `
 SELECT keyword, COUNT(*) as total_count,
-  SUM(CASE WHEN portal = 'naver' THEN 1 ELSE 0 END) as naver_count,
-  SUM(CASE WHEN portal = 'daum' THEN 1 ELSE 0 END) as daum_count
+  SUM(has_ai_image) as ai_count
 FROM (
-  SELECT TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(a.keywords, ',', n.n), ',', -1)) as keyword, a.portal
+  SELECT TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(a.keywords, ',', n.n), ',', -1)) as keyword,
+    CASE WHEN EXISTS (
+      SELECT 1 FROM image_analyses ia
+      WHERE ia.article_id = a.id AND ia.ai_probability >= 0.7
+    ) THEN 1 ELSE 0 END as has_ai_image
   FROM articles a
   CROSS JOIN (SELECT 1 as n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5) n
   WHERE a.keywords IS NOT NULL
@@ -41,10 +47,55 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [searchResult, setSearchResult] = useState(null)
   const [searchLoading, setSearchLoading] = useState(false)
+  const [rankRefresh, setRankRefresh] = useState(0)
   const [sql, setSql] = useState('SELECT * FROM articles LIMIT 10;')
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [lastArticleTime, setLastArticleTime] = useState(null)
+  const [aiImageCount, setAiImageCount] = useState(null)
+
+  // 마지막 기사 수집 시간 가져오기
+  useEffect(() => {
+    const fetchLastTime = async () => {
+      try {
+        const data = await runQuery("SELECT CONVERT_TZ(created_at, '+00:00', '+09:00') AS created_at FROM articles ORDER BY created_at DESC LIMIT 1")
+        if (data.rows && data.rows.length > 0) {
+          setLastArticleTime(data.rows[0].created_at)
+        }
+      } catch (e) {
+        console.error('마지막 기사 시간 로드 실패:', e)
+      }
+    }
+    fetchLastTime()
+  }, [])
+
+  // 오늘 발견된 AI 이미지 수
+  useEffect(() => {
+    const fetchAiCount = async () => {
+      try {
+        const data = await runQuery(
+          "SELECT COUNT(*) as cnt FROM image_analyses WHERE ai_probability >= 0.7 AND DATE(CONVERT_TZ(created_at, '+00:00', '+09:00')) = CURDATE()"
+        )
+        if (data.rows && data.rows.length > 0) {
+          setAiImageCount(Number(data.rows[0].cnt))
+        }
+      } catch (e) {
+        console.error('AI 이미지 수 로드 실패:', e)
+      }
+    }
+    fetchAiCount()
+  }, [])
+
+  const formatLastTime = (timeStr) => {
+    if (!timeStr) return ''
+    const d = new Date(timeStr)
+    const month = d.getMonth() + 1
+    const day = d.getDate()
+    const hour = d.getHours()
+    const min = String(d.getMinutes()).padStart(2, '0')
+    return `${month}월 ${day}일 ${hour}:${min}`
+  }
 
   // 페이지 로드 시 DB에서 키워드 데이터 가져오기
   useEffect(() => {
@@ -52,13 +103,14 @@ export default function App() {
       try {
         const data = await runQuery(KEYWORDS_SQL)
         if (data.rows && data.rows.length > 0) {
-          const mapped = data.rows.map(r => ({
-            keyword: r.keyword,
-            total_count: Number(r.total_count),
-            naver_count: Number(r.naver_count),
-            daum_count: Number(r.daum_count),
-            ratio: Number(r.naver_count) / Math.max(Number(r.total_count), 1),
-          }))
+          const mapped = data.rows
+            .map(r => ({
+              keyword: r.keyword,
+              total_count: Number(r.total_count),
+              ai_count: Number(r.ai_count),
+              ratio: Number(r.ai_count) / Math.max(Number(r.total_count), 1),
+            }))
+            .filter(r => r.ai_count > 0)
           setKeywords(mapped)
         }
       } catch (e) {
@@ -70,9 +122,24 @@ export default function App() {
     fetchKeywords()
   }, [])
 
+  // 검색 랭킹 기록
+  const recordSearchRank = async (keyword) => {
+    try {
+      await fetch(`${API_URL}/api/keyword-ranks/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: keyword.trim() }),
+      })
+      setRankRefresh((prev) => prev + 1)
+    } catch (e) {
+      console.error('검색 랭킹 기록 실패:', e)
+    }
+  }
+
   // 키워드 검색
   const searchKeyword = async (query) => {
     if (!query.trim()) return
+    recordSearchRank(query)
     setSearchLoading(true)
     setSearchResult(null)
     try {
@@ -143,92 +210,119 @@ export default function App() {
           >
             DB Query
           </button>
+          <button
+            style={tab === TABS.SUBSCRIBE ? styles.tabActive : styles.tab}
+            onClick={() => setTab(TABS.SUBSCRIBE)}
+          >
+            이메일 구독
+          </button>
         </nav>
       </header>
 
       {/* 메인: 버블 차트 */}
       {tab === TABS.MAIN && (
-        <div style={styles.mainContent}>
-          <div style={styles.pageHeader}>
-            <h2 style={styles.pageTitle}>뉴스 키워드 버블 차트</h2>
-            <p style={styles.pageDesc}>
-              원의 크기는 전체 뉴스 수, 색상 농도는 네이버 뉴스 비율을 나타냅니다. 버블을 클릭하면 검색됩니다.
-            </p>
+        <div style={styles.mainLayout}>
+          <div style={styles.mainContent}>
+            <div style={styles.pageHeader}>
+              <h2 style={styles.pageTitle}>뉴스 키워드 버블 차트</h2>
+              <p style={styles.pageDesc}>
+                원의 크기는 전체 뉴스 수, 색상 농도는 네이버 뉴스 비율을 나타냅니다. 버블을 클릭하면 검색됩니다.
+              </p>
+            </div>
+
+            {/* 검색창 */}
+            <div style={styles.searchWrapper}>
+              <div style={{
+                ...styles.searchBox,
+                borderColor: searchFocused ? '#3b82f6' : '#3f3f46',
+                boxShadow: searchFocused ? '0 0 0 3px rgba(59,130,246,0.15)' : 'none',
+              }}>
+                <svg style={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  style={styles.searchInput}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && searchQuery.trim()) {
+                      searchKeyword(searchQuery)
+                    }
+                  }}
+                  placeholder="뉴스 키워드를 검색하세요..."
+                />
+                {searchQuery && (
+                  <button
+                    style={styles.searchClear}
+                    onClick={() => { setSearchQuery(''); setSearchResult(null) }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 검색 결과 */}
+            {searchLoading && <div style={styles.searchLoading}>검색 중...</div>}
+            {searchResult && (
+              <div style={styles.searchResultCard}>
+                <div style={styles.searchResultHeader}>
+                  <span style={styles.searchResultKeyword}>{searchResult.keyword}</span>
+                  <span style={styles.searchResultTotal}>총 {searchResult.total}건</span>
+                </div>
+                <div style={styles.portalRow}>
+                  <div style={styles.portalBadgeNaver}>네이버</div>
+                  <span style={styles.portalCount}>{searchResult.naver}건</span>
+                  <div style={styles.progressBar}>
+                    <div style={{ ...styles.progressFill, width: `${searchResult.total ? (searchResult.naver / searchResult.total * 100) : 0}%`, backgroundColor: '#22c55e' }} />
+                  </div>
+                  <span style={styles.portalPercent}>{searchResult.total ? (searchResult.naver / searchResult.total * 100).toFixed(1) : 0}%</span>
+                </div>
+                <div style={styles.portalRow}>
+                  <div style={styles.portalBadgeDaum}>다음</div>
+                  <span style={styles.portalCount}>{searchResult.daum}건</span>
+                  <div style={styles.progressBar}>
+                    <div style={{ ...styles.progressFill, width: `${searchResult.total ? (searchResult.daum / searchResult.total * 100) : 0}%`, backgroundColor: '#3b82f6' }} />
+                  </div>
+                  <span style={styles.portalPercent}>{searchResult.total ? (searchResult.daum / searchResult.total * 100).toFixed(1) : 0}%</span>
+                </div>
+              </div>
+            )}
+
+            {keywordsLoading ? (
+              <div style={{ textAlign: 'center', padding: 60, color: '#71717a' }}>키워드 데이터 로딩 중...</div>
+            ) : keywords.length > 0 ? (
+              <BubbleChart data={keywords} onBubbleClick={handleBubbleClick} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: 60, color: '#71717a' }}>키워드 데이터가 없습니다</div>
+            )}
           </div>
 
-          {/* 검색창 */}
-          <div style={styles.searchWrapper}>
-            <div style={{
-              ...styles.searchBox,
-              borderColor: searchFocused ? '#3b82f6' : '#3f3f46',
-              boxShadow: searchFocused ? '0 0 0 3px rgba(59,130,246,0.15)' : 'none',
-            }}>
-              <svg style={styles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                style={styles.searchInput}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && searchQuery.trim()) {
-                    searchKeyword(searchQuery)
-                  }
-                }}
-                placeholder="뉴스 키워드를 검색하세요..."
-              />
-              {searchQuery && (
-                <button
-                  style={styles.searchClear}
-                  onClick={() => { setSearchQuery(''); setSearchResult(null) }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
+          <div style={styles.sidebar}>
+            {aiImageCount !== null && (
+              <div style={styles.aiImageCard}>
+                <div style={styles.aiImageHeader}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
                   </svg>
-                </button>
-              )}
-            </div>
+                  <span style={styles.aiImageTitle}>오늘 발견된 AI 이미지</span>
+                </div>
+                <div style={styles.aiImageCount}>{aiImageCount}<span style={styles.aiImageUnit}>건</span></div>
+              </div>
+            )}
+            <WeeklyRankPanel
+              refreshTrigger={rankRefresh}
+              onKeywordClick={handleBubbleClick}
+            />
           </div>
-
-          {/* 검색 결과 */}
-          {searchLoading && <div style={styles.searchLoading}>검색 중...</div>}
-          {searchResult && (
-            <div style={styles.searchResultCard}>
-              <div style={styles.searchResultHeader}>
-                <span style={styles.searchResultKeyword}>{searchResult.keyword}</span>
-                <span style={styles.searchResultTotal}>총 {searchResult.total}건</span>
-              </div>
-              <div style={styles.portalRow}>
-                <div style={styles.portalBadgeNaver}>네이버</div>
-                <span style={styles.portalCount}>{searchResult.naver}건</span>
-                <div style={styles.progressBar}>
-                  <div style={{ ...styles.progressFill, width: `${searchResult.total ? (searchResult.naver / searchResult.total * 100) : 0}%`, backgroundColor: '#22c55e' }} />
-                </div>
-                <span style={styles.portalPercent}>{searchResult.total ? (searchResult.naver / searchResult.total * 100).toFixed(1) : 0}%</span>
-              </div>
-              <div style={styles.portalRow}>
-                <div style={styles.portalBadgeDaum}>다음</div>
-                <span style={styles.portalCount}>{searchResult.daum}건</span>
-                <div style={styles.progressBar}>
-                  <div style={{ ...styles.progressFill, width: `${searchResult.total ? (searchResult.daum / searchResult.total * 100) : 0}%`, backgroundColor: '#3b82f6' }} />
-                </div>
-                <span style={styles.portalPercent}>{searchResult.total ? (searchResult.daum / searchResult.total * 100).toFixed(1) : 0}%</span>
-              </div>
-            </div>
-          )}
-
-          {keywordsLoading ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#71717a' }}>키워드 데이터 로딩 중...</div>
-          ) : keywords.length > 0 ? (
-            <BubbleChart data={keywords} onBubbleClick={handleBubbleClick} />
-          ) : (
-            <div style={{ textAlign: 'center', padding: 60, color: '#71717a' }}>키워드 데이터가 없습니다</div>
-          )}
         </div>
       )}
 
@@ -288,6 +382,19 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* 이메일 구독 */}
+      {tab === TABS.SUBSCRIBE && <EmailSubscription />}
+
+      {/* 하단 안내 */}
+      <footer style={styles.footer}>
+        {lastArticleTime && (
+          <span style={styles.footerTime}>마지막 기사 정보 : {formatLastTime(lastArticleTime)} (UTC/GMT +09:00) </span>
+        )}
+        <p style={styles.footerText}>
+          AI 이미지 분석에는 Sightengine API를 사용하였습니다. 분석 결과는 참고용이며, AI로 판별된 이미지가 반드시 의도적으로 제작된 가짜 뉴스용 이미지를 의미하지는 않습니다.
+        </p>
+      </footer>
     </div>
   )
 }
@@ -339,8 +446,55 @@ const styles = {
     cursor: 'pointer',
   },
   // 메인 페이지
-  mainContent: {
+  mainLayout: {
+    display: 'flex',
+    gap: 24,
     padding: '24px',
+    alignItems: 'flex-start',
+  },
+  mainContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sidebar: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    width: 320,
+    flexShrink: 0,
+    position: 'sticky',
+    top: 24,
+    alignSelf: 'flex-start',
+  },
+  aiImageCard: {
+    backgroundColor: '#111827',
+    border: '1px solid #1e2d4a',
+    borderRadius: 12,
+    padding: '16px',
+  },
+  aiImageHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  aiImageTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#f4f4f5',
+  },
+  aiImageCount: {
+    fontSize: 36,
+    fontWeight: 800,
+    color: '#ef4444',
+    textAlign: 'center',
+    padding: '4px 0',
+  },
+  aiImageUnit: {
+    fontSize: 16,
+    fontWeight: 500,
+    color: '#a1a1aa',
+    marginLeft: 4,
   },
   pageHeader: {
     marginBottom: 16,
@@ -567,5 +721,23 @@ const styles = {
   null: {
     color: '#71717a',
     fontStyle: 'italic',
+  },
+  // 하단 안내
+  footer: {
+    padding: '16px 24px',
+    borderTop: '1px solid #1e2d4a',
+    textAlign: 'center',
+  },
+  footerTime: {
+    fontSize: 12,
+    color: '#64748b',
+    display: 'block',
+    marginBottom: 6,
+  },
+  footerText: {
+    fontSize: 11,
+    color: '#4b5563',
+    margin: 0,
+    lineHeight: 1.5,
   },
 }
