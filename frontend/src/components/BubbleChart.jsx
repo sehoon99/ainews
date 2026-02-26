@@ -35,15 +35,35 @@ export default function BubbleChart({ data, width = 900, height = 700, onBubbleC
       .domain([minCount, maxCount])
       .range([18, 70])
 
-    // 색상: ratio 0 → 연한 파란색, ratio 1 → 진한 파란색
-    const colorScale = d3.scaleLinear()
-      .domain([0, 0.5, 1])
-      .range(['#1e3a5f', '#3b82f6', '#93c5fd'])
+    // 색상: 절대값 기준 4구간 (파랑→초록→노랑→빨강)
+    // 5% 단위로 같은 색상 계열 내에서 점점 진해짐
+    const getColor = (ratio) => {
+      const pct = ratio * 100
+      if (pct <= 20) {
+        // 0~20%: 파란색 계열 (연한→진한)
+        const t = pct / 20
+        return d3.interpolateRgb('#1a2a4a', '#3b82f6')(t)
+      } else if (pct <= 50) {
+        // 20~50%: 초록색 계열 (연한→진한)
+        const t = (pct - 20) / 30
+        return d3.interpolateRgb('#14532d', '#22c55e')(t)
+      } else if (pct <= 70) {
+        // 50~70%: 노란색 계열 (연한→진한)
+        const t = (pct - 50) / 20
+        return d3.interpolateRgb('#713f12', '#f59e0b')(t)
+      } else {
+        // 70~100%: 빨간색 계열 (연한→진한)
+        const t = (pct - 70) / 30
+        return d3.interpolateRgb('#7f1d1d', '#ef4444')(t)
+      }
+    }
 
-    // 불투명도: ratio 높을수록 진하게
-    const opacityScale = d3.scaleLinear()
-      .domain([0, 1])
-      .range([0.5, 1])
+    // 불투명도: 5% 단위 구간별로 계단식 + 진해짐
+    const getOpacity = (ratio) => {
+      const pct = ratio * 100
+      const step = Math.floor(pct / 5)
+      return 0.55 + (step / 20) * 0.45
+    }
 
     // 노드 데이터 생성
     const nodes = data.map(d => ({
@@ -71,10 +91,10 @@ export default function BubbleChart({ data, width = 900, height = 700, onBubbleC
     // 원 그리기
     nodeGroup.append('circle')
       .attr('r', d => d.r)
-      .attr('fill', d => colorScale(d.ratio))
-      .attr('opacity', d => opacityScale(d.ratio))
-      .attr('stroke', d => d.ratio > 0.7 ? '#93c5fd' : '#1e2d4a')
-      .attr('stroke-width', d => d.ratio > 0.7 ? 2 : 1)
+      .attr('fill', d => getColor(d.ratio))
+      .attr('opacity', d => getOpacity(d.ratio))
+      .attr('stroke', d => d.ratio > 0.7 ? '#ef4444' : d.ratio > 0.5 ? '#f59e0b' : '#1e2d4a')
+      .attr('stroke-width', d => d.ratio > 0.5 ? 2 : 1)
 
     // 키워드 텍스트
     nodeGroup.append('text')
@@ -128,9 +148,9 @@ export default function BubbleChart({ data, width = 900, height = 700, onBubbleC
       .on('mouseleave', function (event, d) {
         d3.select(this).select('circle')
           .transition().duration(150)
-          .attr('stroke', d.ratio > 0.7 ? '#93c5fd' : '#1e2d4a')
-          .attr('stroke-width', d.ratio > 0.7 ? 2 : 1)
-          .attr('opacity', opacityScale(d.ratio))
+          .attr('stroke', d.ratio > 0.7 ? '#ef4444' : d.ratio > 0.5 ? '#f59e0b' : '#1e2d4a')
+          .attr('stroke-width', d.ratio > 0.5 ? 2 : 1)
+          .attr('opacity', getOpacity(d.ratio))
 
         setTooltip({ show: false, x: 0, y: 0, data: null })
       })
@@ -191,7 +211,7 @@ export default function BubbleChart({ data, width = 900, height = 700, onBubbleC
             <span style={styles.tooltipLabel}>AI 비율</span>
             <span style={{
               ...styles.tooltipValue,
-              color: tooltip.data.ratio > 0.7 ? '#93c5fd' : tooltip.data.ratio > 0.4 ? '#3b82f6' : '#a1a1aa',
+              color: tooltip.data.ratio > 0.7 ? '#ef4444' : tooltip.data.ratio > 0.5 ? '#f59e0b' : tooltip.data.ratio > 0.2 ? '#22c55e' : '#3b82f6',
             }}>
               {(tooltip.data.ratio * 100).toFixed(1)}%
             </span>
@@ -206,9 +226,17 @@ export default function BubbleChart({ data, width = 900, height = 700, onBubbleC
           <div style={styles.legendGradient} />
           <div style={styles.legendLabels}>
             <span>0%</span>
+            <span>20%</span>
             <span>50%</span>
+            <span>70%</span>
             <span>100%</span>
           </div>
+        </div>
+        <div style={styles.legendColorLabels}>
+          <span style={{ color: '#3b82f6' }}>파랑</span>
+          <span style={{ color: '#22c55e' }}>초록</span>
+          <span style={{ color: '#f59e0b' }}>노랑</span>
+          <span style={{ color: '#ef4444' }}>빨강</span>
         </div>
         <div style={styles.legendSizeRow}>
           <span style={styles.legendTitle}>원 크기</span>
@@ -285,8 +313,15 @@ const styles = {
   legendGradient: {
     height: 8,
     borderRadius: 4,
-    background: 'linear-gradient(to right, #1e3a5f, #3b82f6, #93c5fd)',
+    background: 'linear-gradient(to right, #1a2a4a 0%, #3b82f6 20%, #14532d 20%, #22c55e 50%, #713f12 50%, #f59e0b 70%, #7f1d1d 70%, #ef4444 100%)',
     marginBottom: 4,
+  },
+  legendColorLabels: {
+    display: 'flex',
+    justifyContent: 'space-around',
+    fontSize: 10,
+    fontWeight: 600,
+    marginBottom: 6,
   },
   legendLabels: {
     display: 'flex',

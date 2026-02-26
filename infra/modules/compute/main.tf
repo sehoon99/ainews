@@ -76,6 +76,12 @@ resource "aws_iam_role_policy_attachment" "app" {
   policy_arn = aws_iam_policy.app.arn
 }
 
+resource "aws_iam_role_policy_attachment" "ses" {
+  count      = var.ses_send_policy_arn != "" ? 1 : 0
+  role       = aws_iam_role.app.name
+  policy_arn = var.ses_send_policy_arn
+}
+
 # Instance Profile
 resource "aws_iam_instance_profile" "app" {
   name = "${var.name}-app-profile"
@@ -164,6 +170,8 @@ Environment=DB_PORT=$DB_PORT
 Environment=DB_USERNAME=$DB_USERNAME
 Environment=DB_PASSWORD=$DB_PASSWORD
 Environment=DB_NAME=$DB_NAME
+Environment=SES_SENDER_EMAIL=${var.ses_sender_email}
+Environment=APP_BASE_URL=${var.app_base_url}
 ExecStart=/usr/bin/java -jar /opt/ainews/app.jar
 Restart=on-failure
 RestartSec=10
