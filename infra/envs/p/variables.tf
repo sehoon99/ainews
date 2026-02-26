@@ -15,3 +15,15 @@ variable "project_name" {
   type        = string
   default     = "ainews"
 }
+
+variable "ses_sender_email" {
+  description = "SES sender email address"
+  type        = string
+  default     = "noreply@ainews.example.com"
+}
+
+variable "app_base_url" {
+  description = "Application base URL for links in emails"
+  type        = string
+  default     = "http://localhost:8080"
+}
