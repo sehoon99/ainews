@@ -157,16 +157,23 @@ resource "aws_lambda_function" "this" {
   depends_on = [
     aws_iam_role_policy_attachment.lambda_basic,
     aws_iam_role_policy_attachment.lambda_vpc,
+    aws_iam_role_policy.sqs,
+    aws_iam_role_policy.sqs_send,
+    aws_iam_role_policy.ssm,
+    aws_iam_role_policy.secrets,
   ]
 }
 
 # SQS Event Source Mapping
 resource "aws_lambda_event_source_mapping" "sqs" {
-  count            = var.enable_sqs ? 1 : 0
-  event_source_arn = var.sqs_arn
-  function_name    = aws_lambda_function.this.arn
-  batch_size       = var.sqs_batch_size
-  enabled          = true
+  count                   = var.enable_sqs ? 1 : 0
+  event_source_arn        = var.sqs_arn
+  function_name           = aws_lambda_function.this.arn
+  batch_size              = var.sqs_batch_size
+  function_response_types = ["ReportBatchItemFailures"]
+  enabled                 = true
+
+  depends_on = [aws_iam_role_policy.sqs]
 }
 
 # Security Group for Lambda (if VPC is configured)

@@ -43,3 +43,9 @@ variable "create_redis" {
   type        = bool
   default     = false
 }
+
+variable "tags" {
+  description = "Tags to apply to storage resources"
+  type        = map(string)
+  default     = {}
+}

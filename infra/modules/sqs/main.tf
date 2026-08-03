@@ -2,6 +2,7 @@
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.name}-dlq"
   message_retention_seconds = var.message_retention_seconds
+  sqs_managed_sse_enabled   = true
 
   tags = merge(var.tags, {
     Name = "${var.name}-dlq"
@@ -16,6 +17,7 @@ resource "aws_sqs_queue" "this" {
   delay_seconds              = var.delay_seconds
   max_message_size           = var.max_message_size
   receive_wait_time_seconds  = var.receive_wait_time_seconds
+  sqs_managed_sse_enabled    = true
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn

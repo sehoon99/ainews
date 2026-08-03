@@ -2,9 +2,9 @@
 resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
 
-  tags = {
+  tags = merge(var.tags, {
     Name = var.bucket_name
-  }
+  })
 }
 
 resource "aws_s3_bucket_versioning" "this" {
@@ -29,9 +29,9 @@ resource "aws_db_subnet_group" "this" {
   name       = "${var.name}-db-subnet"
   subnet_ids = var.private_subnet_ids
 
-  tags = {
+  tags = merge(var.tags, {
     Name = "${var.name}-db-subnet"
-  }
+  })
 }
 
 # DB Security Group
@@ -56,9 +56,9 @@ resource "aws_security_group" "db" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
+  tags = merge(var.tags, {
     Name = "${var.name}-db-sg"
-  }
+  })
 }
 
 resource "aws_security_group" "redis" {
@@ -81,5 +81,5 @@ resource "aws_security_group" "redis" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${var.name}-redis-sg" }
+  tags = merge(var.tags, { Name = "${var.name}-redis-sg" })
 }

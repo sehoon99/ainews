@@ -16,6 +16,9 @@ service-account*.json
 .aws/
 .gcp/
 
+# Root-level database dumps (keep versioned Flyway migrations under backend/)
+/*.sql
+
 # ===== IDE/에디터 =====
 .idea/
 .vscode/

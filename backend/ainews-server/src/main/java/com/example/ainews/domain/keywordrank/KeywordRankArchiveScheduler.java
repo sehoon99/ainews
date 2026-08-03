@@ -1,6 +1,7 @@
 package com.example.ainews.domain.keywordrank;
 
 import com.example.ainews.domain.keywordrank.dto.KeywordRankResponse;
+import com.example.ainews.infra.scheduler.ClusterSchedulerLock;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -25,11 +26,14 @@ public class KeywordRankArchiveScheduler {
     private final KeywordSearchRankService service;
     private final String archivePath;
     private final ObjectMapper objectMapper;
+    private final ClusterSchedulerLock schedulerLock;
 
     public KeywordRankArchiveScheduler(
             KeywordSearchRankService service,
+            ClusterSchedulerLock schedulerLock,
             @Value("${ainews.keyword-rank.archive-path:./keyword-rank-archives}") String archivePath) {
         this.service = service;
+        this.schedulerLock = schedulerLock;
         this.archivePath = archivePath;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
@@ -39,6 +43,10 @@ public class KeywordRankArchiveScheduler {
 
     @Scheduled(cron = "0 5 0 * * MON", zone = "Asia/Seoul")
     public void archivePreviousWeek() {
+        schedulerLock.runWithLock("ainews-keyword-rank-archive", this::archivePreviousWeekOnce);
+    }
+
+    private void archivePreviousWeekOnce() {
         LocalDate previousWeekStart = LocalDate.now(ZoneId.of("Asia/Seoul"))
                 .with(TemporalAdjusters.previous(DayOfWeek.MONDAY));
 

@@ -56,3 +56,38 @@ output "eventbridge_rule_arn" {
   description = "EventBridge rule ARN for news crawler schedule"
   value       = module.eventbridge_news_crawler.rule_arn
 }
+
+output "ecr_repository_url" {
+  description = "Backend ECR repository URL"
+  value       = module.ecs_backend.ecr_repository_url
+}
+
+output "ecs_cluster_name" {
+  description = "Backend ECS cluster name"
+  value       = module.ecs_backend.cluster_name
+}
+
+output "ecs_service_name" {
+  description = "Backend ECS service name"
+  value       = module.ecs_backend.service_name
+}
+
+output "ecs_autoscaling_group_name" {
+  description = "Spot ECS Auto Scaling Group name"
+  value       = module.ecs_backend.autoscaling_group_name
+}
+
+output "backend_alb_dns_name" {
+  description = "Backend ALB origin DNS name"
+  value       = module.ecs_backend.load_balancer_dns_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "Frontend CloudFront distribution ID"
+  value       = module.cloudfront.distribution_id
+}
+
+output "cloudfront_domain_name" {
+  description = "Frontend CloudFront domain name"
+  value       = module.cloudfront.domain_name
+}
