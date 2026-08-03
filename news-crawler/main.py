@@ -17,7 +17,6 @@ from newspaper import Article
 
 from db_client import DBClient
 from keyword_extractor import extract_keywords
-from sqs_client import create_sqs_client
 
 
 # 필터링할 이미지 URL 키워드
@@ -856,7 +855,6 @@ def crawl_and_insert_db(
 
     # DB 클라이언트 초기화 (Secrets Manager에서 자동 로드)
     db = DBClient.from_secrets_manager()
-    sqs = create_sqs_client()
 
     stats = {
         'total': len(urls),
@@ -864,7 +862,6 @@ def crawl_and_insert_db(
         'duplicate': 0,
         'failed': 0,
         'no_images': 0,
-        'sqs_sent': 0,
         'keywords_extracted': 0,
     }
 
@@ -917,17 +914,6 @@ def crawl_and_insert_db(
                 content = data.get('content', '')
                 if content:
                     article_contents.append((article_id, content))
-
-                # SQS 전송 (이미지 분석 요청)
-                if sqs:
-                    message_id = sqs.send_message(
-                        article_id=article_id,
-                        image_urls=images,
-                        source_url=url,
-                    )
-                    if message_id:
-                        stats['sqs_sent'] += 1
-                        print(f'    → SQS 전송 완료 (message_id={message_id[:12]}...)')
 
                 # JSON 저장 (옵션)
                 if save_json:
@@ -999,8 +985,6 @@ def crawl_and_insert_db(
     print(f'  - 실패: {stats["failed"]}개')
     if stats['keywords_extracted']:
         print(f'  - 키워드 추출: {stats["keywords_extracted"]}개')
-    if sqs:
-        print(f'  - SQS 전송: {stats["sqs_sent"]}개')
     if save_json:
         print(f'  - JSON 파일: {len(saved_files)}개')
     print(f'{"="*50}')

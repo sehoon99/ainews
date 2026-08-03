@@ -56,8 +56,3 @@ output "eventbridge_rule_arn" {
   description = "EventBridge rule ARN for news crawler schedule"
   value       = module.eventbridge_news_crawler.rule_arn
 }
-
-output "sqs_queue_url" {
-  description = "SQS queue URL for image analysis"
-  value       = module.sqs_image_analysis.queue_url
-}
