@@ -4,6 +4,7 @@ import com.example.ainews.domain.keywordstat.KeywordChange;
 import com.example.ainews.domain.keywordstat.KeywordStatService;
 import com.example.ainews.domain.subscriber.Subscriber;
 import com.example.ainews.domain.subscriber.SubscriberService;
+import com.example.ainews.infra.scheduler.ClusterSchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,22 +24,29 @@ public class DailyMailScheduler {
     private final SubscriberService subscriberService;
     private final EmailService emailService;
     private final EmailTemplateBuilder templateBuilder;
+    private final ClusterSchedulerLock schedulerLock;
     private final String baseUrl;
 
     public DailyMailScheduler(KeywordStatService keywordStatService,
                               SubscriberService subscriberService,
                               EmailService emailService,
                               EmailTemplateBuilder templateBuilder,
+                              ClusterSchedulerLock schedulerLock,
                               @Value("${ainews.ses.base-url}") String baseUrl) {
         this.keywordStatService = keywordStatService;
         this.subscriberService = subscriberService;
         this.emailService = emailService;
         this.templateBuilder = templateBuilder;
+        this.schedulerLock = schedulerLock;
         this.baseUrl = baseUrl;
     }
 
     @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
     public void sendDailyReport() {
+        schedulerLock.runWithLock("ainews-daily-mail", this::sendDailyReportOnce);
+    }
+
+    private void sendDailyReportOnce() {
         log.info("일일 키워드 변동 리포트 발송 시작");
 
         List<KeywordChange> changes = keywordStatService.calculateChanges();

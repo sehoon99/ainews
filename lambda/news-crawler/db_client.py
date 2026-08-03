@@ -236,6 +236,13 @@ class DBClient:
                 return None
             raise
 
+    def delete_article(self, article_id: int) -> None:
+        """Delete an article when its downstream SQS message was not accepted."""
+        conn = self.connect()
+        with conn.cursor() as cursor:
+            cursor.execute('DELETE FROM articles WHERE id = %s', (article_id,))
+        conn.commit()
+
     def insert_news_data(self, data: dict, portal: str) -> Optional[int]:
         """
         크롤링된 뉴스 데이터를 DB에 INSERT

@@ -20,3 +20,9 @@ variable "key_id" {
   type        = string
   default     = ""
 }
+
+variable "tags" {
+  description = "Tags to apply to the SSM parameter"
+  type        = map(string)
+  default     = {}
+}

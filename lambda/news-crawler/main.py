@@ -886,6 +886,7 @@ def crawl_and_insert_db(
                 stats['duplicate'] += 1
                 continue
 
+            article_id = None
             try:
                 data = extract_news_data(url)
 
@@ -910,6 +911,18 @@ def crawl_and_insert_db(
                     stats['duplicate'] += 1
                     continue
 
+                # SQS 전송 (이미지 분석 요청)
+                message_id = sqs.send_message(
+                    article_id=article_id,
+                    image_urls=images,
+                    source_url=url,
+                )
+                if not message_id:
+                    raise RuntimeError('SQS did not return a message ID')
+
+                stats['sqs_sent'] += 1
+                print(f'    → SQS 전송 완료 (message_id={message_id[:12]}...)')
+
                 stats['success'] += 1
                 print(f'    → 성공 (article_id={article_id}, 이미지 {len(images)}개)')
 
@@ -918,23 +931,22 @@ def crawl_and_insert_db(
                 if content:
                     article_contents.append((article_id, content))
 
-                # SQS 전송 (이미지 분석 요청)
-                if sqs:
-                    message_id = sqs.send_message(
-                        article_id=article_id,
-                        image_urls=images,
-                        source_url=url,
-                    )
-                    if message_id:
-                        stats['sqs_sent'] += 1
-                        print(f'    → SQS 전송 완료 (message_id={message_id[:12]}...)')
+                # SQS accepted the message; do not compensate later failures.
+                queued_article_id = article_id
+                article_id = None
 
                 # JSON 저장 (옵션)
                 if save_json:
-                    data['article_id'] = article_id
+                    data['article_id'] = queued_article_id
                     portal_articles[portal].append(data)
 
             except Exception as e:
+                if article_id is not None:
+                    try:
+                        db.delete_article(article_id)
+                        print(f'    → SQS 전송 실패 보상: article_id={article_id} 삭제')
+                    except Exception as rollback_error:
+                        print(f'    → 보상 삭제 실패: {rollback_error}')
                 print(f'    → 오류: {e}')
                 stats['failed'] += 1
 
@@ -999,8 +1011,7 @@ def crawl_and_insert_db(
     print(f'  - 실패: {stats["failed"]}개')
     if stats['keywords_extracted']:
         print(f'  - 키워드 추출: {stats["keywords_extracted"]}개')
-    if sqs:
-        print(f'  - SQS 전송: {stats["sqs_sent"]}개')
+    print(f'  - SQS 전송: {stats["sqs_sent"]}개')
     if save_json:
         print(f'  - JSON 파일: {len(saved_files)}개')
     print(f'{"="*50}')
