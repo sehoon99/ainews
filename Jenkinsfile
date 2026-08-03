@@ -15,6 +15,9 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    env.IMAGE_TAG = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+                }
             }
         }
 
@@ -23,7 +26,7 @@ pipeline {
                 sh '''
                     export JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
                     export PATH=$JAVA_HOME/bin:$PATH
-                    ./gradlew :backend:ainews-server:build -x test
+                    ./gradlew :backend:ainews-server:build
                 '''
             }
         }
@@ -57,21 +60,72 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir('infra/envs/p') {
-                    sh 'terraform plan'
+                    sh 'TF_VAR_backend_image_tag="$IMAGE_TAG" terraform plan'
                 }
+            }
+        }
+
+        stage('Bootstrap ECR') {
+            steps {
+                input message: 'Apply Terraform changes?', ok: 'Apply'
+                dir('infra/envs/p') {
+                    sh 'terraform apply -target=module.ecs_backend.aws_ecr_repository.app -auto-approve'
+                }
+            }
+        }
+
+        stage('Build and Push Backend Image') {
+            steps {
+                sh '''
+                    ECR_REPOSITORY=$(cd infra/envs/p && terraform output -raw ecr_repository_url)
+                    ECR_REGISTRY=$(echo "$ECR_REPOSITORY" | cut -d/ -f1)
+                    aws ecr get-login-password --region "$AWS_DEFAULT_REGION" \
+                      | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+                    docker build -t "$ECR_REPOSITORY:$IMAGE_TAG" .
+                    docker push "$ECR_REPOSITORY:$IMAGE_TAG"
+                '''
             }
         }
 
         stage('Terraform Apply') {
             steps {
-                input message: 'Apply Terraform changes?', ok: 'Apply'
                 dir('infra/envs/p') {
-                    sh 'terraform apply -auto-approve'
+                    sh 'TF_VAR_backend_image_tag="$IMAGE_TAG" terraform apply -auto-approve'
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to ECS') {
+            steps {
+                sh '''
+                    ECS_CLUSTER=$(cd infra/envs/p && terraform output -raw ecs_cluster_name)
+                    ECS_SERVICE=$(cd infra/envs/p && terraform output -raw ecs_service_name)
+
+                    aws ecs wait services-stable \
+                      --cluster "$ECS_CLUSTER" \
+                      --services "$ECS_SERVICE"
+                '''
+            }
+        }
+
+        stage('Deploy Frontend to CloudFront') {
+            steps {
+                sh '''
+                    npm ci --prefix frontend
+                    npm run build --prefix frontend
+
+                    WEB_BUCKET=$(cd infra/envs/p && terraform output -raw web_bucket)
+                    DISTRIBUTION_ID=$(cd infra/envs/p && terraform output -raw cloudfront_distribution_id)
+
+                    aws s3 sync frontend/dist/ "s3://$WEB_BUCKET/" --delete
+                    aws cloudfront create-invalidation \
+                      --distribution-id "$DISTRIBUTION_ID" \
+                      --paths '/*'
+                '''
+            }
+        }
+
+        stage('Deploy to Legacy EC2') {
             steps {
                 script {
                     def instanceId = sh(

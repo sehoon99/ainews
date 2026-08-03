@@ -4,7 +4,7 @@ resource "aws_ssm_parameter" "this" {
   value  = var.value
   key_id = var.key_id
 
-  tags = {
+  tags = merge(var.tags, {
     Name = var.name
-  }
+  })
 }

@@ -1,0 +1,14 @@
+.git
+.github
+.gradle
+.idea
+.terraform
+**/build
+**/node_modules
+frontend
+infra
+lambda
+news-crawler
+*.sql
+*.tfstate*
+.env*

@@ -16,6 +16,18 @@ variable "project_name" {
   default     = "ainews"
 }
 
+variable "team" {
+  description = "Owning team tag"
+  type        = string
+  default     = "ainews"
+}
+
+variable "backend_image_tag" {
+  description = "Immutable backend container image tag"
+  type        = string
+  default     = "bootstrap"
+}
+
 variable "ses_sender_email" {
   description = "SES sender email address"
   type        = string

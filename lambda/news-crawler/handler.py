@@ -41,6 +41,10 @@ def lambda_handler(event, context):
         stats = result.get('stats', {})
         print(f"Crawl completed: {json.dumps(stats, default=str)}")
 
+        failed_count = int(stats.get('failed', 0))
+        if failed_count > 0:
+            raise RuntimeError(f'Crawl completed with {failed_count} failed article(s)')
+
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -49,14 +53,7 @@ def lambda_handler(event, context):
             }),
         }
 
-    except Exception as e:
+    except Exception:
         error_msg = traceback.format_exc()
         print(f"Crawl failed: {error_msg}")
-
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'message': 'Crawl failed',
-                'error': str(e),
-            }),
-        }
+        raise
