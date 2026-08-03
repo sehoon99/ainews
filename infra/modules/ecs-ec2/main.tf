@@ -33,6 +33,63 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
+resource "aws_ecr_repository" "prometheus" {
+  name                 = "${var.name}-prometheus"
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-prometheus"
+    Service = "monitoring"
+  })
+}
+
+resource "aws_ecr_repository" "grafana" {
+  name                 = "${var.name}-grafana"
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-grafana"
+    Service = "monitoring"
+  })
+}
+
+resource "aws_ecr_lifecycle_policy" "monitoring" {
+  for_each = {
+    prometheus = aws_ecr_repository.prometheus.name
+    grafana    = aws_ecr_repository.grafana.name
+  }
+
+  repository = each.value
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep the latest 20 ${each.key} images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 20
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
 resource "aws_ecs_cluster" "this" {
   name = var.name
 
@@ -50,13 +107,41 @@ resource "aws_cloudwatch_log_group" "app" {
   tags              = merge(var.tags, { Name = "${var.name}-backend" })
 }
 
+resource "aws_cloudwatch_log_group" "monitoring" {
+  name              = "/ecs/${var.name}-monitoring"
+  retention_in_days = 30
+  tags = merge(var.tags, {
+    Name    = "${var.name}-monitoring"
+    Service = "monitoring"
+  })
+}
+
+resource "random_password" "grafana_admin" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "grafana_admin" {
+  name                    = "${var.name}/grafana/admin-password"
+  recovery_window_in_days = 7
+  tags = merge(var.tags, {
+    Name    = "${var.name}-grafana-admin"
+    Service = "monitoring"
+  })
+}
+
+resource "aws_secretsmanager_secret_version" "grafana_admin" {
+  secret_id     = aws_secretsmanager_secret.grafana_admin.id
+  secret_string = random_password.grafana_admin.result
+}
+
 resource "aws_iam_role" "container_instance" {
   name = "${var.name}-ecs-instance-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
       Principal = { Service = "ec2.amazonaws.com" }
     }]
   })
@@ -83,8 +168,8 @@ resource "aws_iam_role" "task_execution" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
       Principal = { Service = "ecs-tasks.amazonaws.com" }
     }]
   })
@@ -109,13 +194,47 @@ resource "aws_iam_role_policy" "task_execution_secrets" {
   })
 }
 
+resource "aws_iam_role" "monitoring_execution" {
+  name = "${var.name}-monitoring-execution-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+  tags = merge(var.tags, {
+    Name    = "${var.name}-monitoring-execution-role"
+    Service = "monitoring"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "monitoring_execution" {
+  role       = aws_iam_role.monitoring_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy" "monitoring_execution_secret" {
+  name = "read-grafana-secret"
+  role = aws_iam_role.monitoring_execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = [aws_secretsmanager_secret.grafana_admin.arn]
+    }]
+  })
+}
+
 resource "aws_iam_role" "task" {
   name = "${var.name}-task-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
       Principal = { Service = "ecs-tasks.amazonaws.com" }
     }]
   })
@@ -163,6 +282,14 @@ resource "aws_security_group" "container_instance" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  ingress {
+    description = "Prometheus scraping between ECS container instances"
+    from_port   = 32768
+    to_port     = 65535
+    protocol    = "tcp"
+    self        = true
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -171,6 +298,41 @@ resource "aws_security_group" "container_instance" {
   }
 
   tags = merge(var.tags, { Name = "${var.name}-ecs-instance-sg" })
+}
+
+resource "aws_service_discovery_private_dns_namespace" "this" {
+  name        = "ainews.local"
+  description = "Private service discovery for AI News workloads"
+  vpc         = var.vpc_id
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-service-discovery"
+    Service = "monitoring"
+  })
+}
+
+resource "aws_service_discovery_service" "backend_metrics" {
+  name = "backend-metrics"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.this.id
+
+    dns_records {
+      ttl  = 10
+      type = "SRV"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-backend-metrics"
+    Service = "monitoring"
+  })
 }
 
 resource "aws_lb" "app" {
@@ -204,6 +366,31 @@ resource "aws_lb_target_group" "app" {
 
   deregistration_delay = 30
   tags                 = merge(var.tags, { Name = "${var.name}-backend" })
+}
+
+resource "aws_lb_target_group" "grafana" {
+  name        = substr("${var.name}-grafana", 0, 32)
+  port        = 3000
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    enabled             = true
+    path                = "/grafana/api/health"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  deregistration_delay = 30
+  tags = merge(var.tags, {
+    Name    = "${var.name}-grafana"
+    Service = "monitoring"
+  })
 }
 
 resource "aws_lb_listener" "http" {
@@ -240,7 +427,41 @@ resource "aws_lb_listener_rule" "cloudfront" {
     }
   }
 
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+
   tags = merge(var.tags, { Name = "${var.name}-cloudfront-origin" })
+}
+
+resource "aws_lb_listener_rule" "grafana" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 2
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.grafana.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-Origin-Verify"
+      values           = [var.origin_verify_header_value]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/grafana", "/grafana/*"]
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-grafana-origin"
+    Service = "monitoring"
+  })
 }
 
 resource "aws_launch_template" "ecs" {
@@ -397,11 +618,18 @@ resource "aws_ecs_task_definition" "app" {
     essential = true
     cpu       = 512
     memory    = 768
-    portMappings = [{
-      containerPort = var.container_port
-      hostPort      = 0
-      protocol      = "tcp"
-    }]
+    portMappings = [
+      {
+        containerPort = var.container_port
+        hostPort      = 0
+        protocol      = "tcp"
+      },
+      {
+        containerPort = 9091
+        hostPort      = 0
+        protocol      = "tcp"
+      }
+    ]
     environment = [
       { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
       { name = "DB_HOST", value = var.db_host },
@@ -457,6 +685,12 @@ resource "aws_ecs_service" "app" {
     container_port   = var.container_port
   }
 
+  service_registries {
+    registry_arn   = aws_service_discovery_service.backend_metrics.arn
+    container_name = "backend"
+    container_port = 9091
+  }
+
   ordered_placement_strategy {
     type  = "spread"
     field = "attribute:ecs.availability-zone"
@@ -474,6 +708,134 @@ resource "aws_ecs_service" "app" {
   ]
 
   tags = merge(var.tags, { Name = "${var.name}-backend" })
+}
+
+resource "aws_ecs_task_definition" "monitoring" {
+  family                   = "${var.name}-monitoring"
+  requires_compatibilities = ["EC2"]
+  network_mode             = "bridge"
+  cpu                      = "512"
+  memory                   = "768"
+  execution_role_arn       = aws_iam_role.monitoring_execution.arn
+
+  volume {
+    name = "prometheus-data"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name      = "prometheus"
+      image     = "${aws_ecr_repository.prometheus.repository_url}:${var.image_tag}"
+      essential = true
+      cpu       = 256
+      memory    = 512
+      portMappings = [{
+        containerPort = 9090
+        hostPort      = 0
+        protocol      = "tcp"
+      }]
+      mountPoints = [{
+        sourceVolume  = "prometheus-data"
+        containerPath = "/prometheus"
+        readOnly      = false
+      }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.monitoring.name
+          awslogs-region        = data.aws_region.current.name
+          awslogs-stream-prefix = "prometheus"
+        }
+      }
+    },
+    {
+      name      = "grafana"
+      image     = "${aws_ecr_repository.grafana.repository_url}:${var.image_tag}"
+      essential = true
+      cpu       = 256
+      memory    = 256
+      portMappings = [{
+        containerPort = 3000
+        hostPort      = 0
+        protocol      = "tcp"
+      }]
+      links = ["prometheus"]
+      dependsOn = [{
+        containerName = "prometheus"
+        condition     = "START"
+      }]
+      environment = [
+        { name = "GF_AUTH_ANONYMOUS_ENABLED", value = "false" },
+        { name = "GF_USERS_ALLOW_SIGN_UP", value = "false" },
+        { name = "GF_SERVER_ROOT_URL", value = "${trimsuffix(var.app_base_url, "/")}/grafana/" },
+        { name = "GF_SERVER_SERVE_FROM_SUB_PATH", value = "true" }
+      ]
+      secrets = [{
+        name      = "GF_SECURITY_ADMIN_PASSWORD"
+        valueFrom = aws_secretsmanager_secret.grafana_admin.arn
+      }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.monitoring.name
+          awslogs-region        = data.aws_region.current.name
+          awslogs-stream-prefix = "grafana"
+        }
+      }
+    }
+  ])
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-monitoring"
+    Service = "monitoring"
+  })
+}
+
+resource "aws_ecs_service" "monitoring" {
+  name                               = "${var.name}-monitoring"
+  cluster                            = aws_ecs_cluster.this.id
+  task_definition                    = aws_ecs_task_definition.monitoring.arn
+  desired_count                      = 1
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
+  enable_ecs_managed_tags            = true
+  propagate_tags                     = "SERVICE"
+  health_check_grace_period_seconds  = 180
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.spot.name
+    weight            = 1
+    base              = 0
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.grafana.arn
+    container_name   = "grafana"
+    container_port   = 3000
+  }
+
+  ordered_placement_strategy {
+    type  = "spread"
+    field = "attribute:ecs.availability-zone"
+  }
+
+  depends_on = [
+    aws_lb_listener_rule.grafana,
+    aws_ecs_cluster_capacity_providers.this,
+    aws_iam_role_policy_attachment.monitoring_execution,
+    aws_iam_role_policy.monitoring_execution_secret,
+    aws_secretsmanager_secret_version.grafana_admin,
+  ]
+
+  tags = merge(var.tags, {
+    Name    = "${var.name}-monitoring"
+    Service = "monitoring"
+  })
 }
 
 resource "aws_appautoscaling_target" "service" {

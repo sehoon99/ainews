@@ -6,9 +6,9 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:local}
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:ainews-prod-mysql.cjmucplwks6l.ap-northeast-2.rds.amazonaws.com}:3306/ainews?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ainews}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: ${DB_USERNAME:admin}  # 실제 RDS 생성 시 만든 ID
-    password: ${DB_PASSWORD:your_password} # 실제 RDS 비밀번호
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -38,6 +38,28 @@ ainews:
     sender-email: ${SES_SENDER_EMAIL:noreply@ainews.example.com}
     region: ap-northeast-2
     base-url: ${APP_BASE_URL:http://localhost:8080}
+
+management:
+  server:
+    port: 9091
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${SPRING_PROFILES_ACTIVE:local}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 ---
 # Local 환경

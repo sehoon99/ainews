@@ -62,6 +62,16 @@ output "ecr_repository_url" {
   value       = module.ecs_backend.ecr_repository_url
 }
 
+output "prometheus_repository_url" {
+  description = "Prometheus ECR repository URL"
+  value       = module.ecs_backend.prometheus_repository_url
+}
+
+output "grafana_repository_url" {
+  description = "Grafana ECR repository URL"
+  value       = module.ecs_backend.grafana_repository_url
+}
+
 output "ecs_cluster_name" {
   description = "Backend ECS cluster name"
   value       = module.ecs_backend.cluster_name
@@ -70,6 +80,17 @@ output "ecs_cluster_name" {
 output "ecs_service_name" {
   description = "Backend ECS service name"
   value       = module.ecs_backend.service_name
+}
+
+output "monitoring_ecs_service_name" {
+  description = "Prometheus and Grafana ECS service name"
+  value       = module.ecs_backend.monitoring_service_name
+}
+
+output "grafana_admin_secret_arn" {
+  description = "Secrets Manager ARN containing the Grafana admin password"
+  value       = module.ecs_backend.grafana_admin_secret_arn
+  sensitive   = true
 }
 
 output "ecs_autoscaling_group_name" {
@@ -90,4 +111,9 @@ output "cloudfront_distribution_id" {
 output "cloudfront_domain_name" {
   description = "Frontend CloudFront domain name"
   value       = module.cloudfront.domain_name
+}
+
+output "grafana_url" {
+  description = "Grafana URL exposed through CloudFront"
+  value       = "https://${module.cloudfront.domain_name}/grafana/"
 }
