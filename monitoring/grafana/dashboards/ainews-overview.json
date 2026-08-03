@@ -1,0 +1,116 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "red" }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "max(up{job=\"ainews-backend\"})", "legendFormat": "backend", "range": true, "refId": "A" }],
+      "title": "Application up",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count{application=\"ainews\"}[1m]))", "legendFormat": "total", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{application=\"ainews\"}[1m]))", "legendFormat": "{{method}} {{uri}}", "range": true, "refId": "B" }
+      ],
+      "title": "HTTP traffic",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 0 },
+      "id": 3,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"ainews\"}[5m])))", "legendFormat": "p95", "range": true, "refId": "A" }],
+      "title": "HTTP p95 latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count{application=\"ainews\",status=~\"4..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"ainews\"}[5m])), 0.001)", "legendFormat": "4xx", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count{application=\"ainews\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"ainews\"}[5m])), 0.001)", "legendFormat": "5xx", "range": true, "refId": "B" }
+      ],
+      "title": "HTTP error ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 8 },
+      "id": 5,
+      "options": { "legend": { "calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "sum by (route, outcome) (rate(ainews_db_write_requests_total[5m]))", "legendFormat": "{{route}} {{outcome}}", "range": true, "refId": "A" }],
+      "title": "DB write-intent requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 8 },
+      "id": 6,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(hikaricp_connections_active)", "legendFormat": "active", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(hikaricp_connections_idle)", "legendFormat": "idle", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(hikaricp_connections_pending)", "legendFormat": "pending", "range": true, "refId": "C" },
+        { "editorMode": "code", "expr": "sum(hikaricp_connections_max)", "legendFormat": "max", "range": true, "refId": "D" }
+      ],
+      "title": "HikariCP connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 15 },
+      "id": 7,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "heap", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(jvm_memory_used_bytes{area=\"nonheap\"})", "legendFormat": "non-heap", "range": true, "refId": "B" }
+      ],
+      "title": "JVM memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 15 },
+      "id": 8,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "process_cpu_usage", "legendFormat": "process", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "system_cpu_usage", "legendFormat": "system", "range": true, "refId": "B" }
+      ],
+      "title": "CPU usage",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 41,
+  "tags": ["ainews", "spring-boot", "prometheus"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "AiNews Service Overview",
+  "uid": "ainews-overview",
+  "version": 1
+}

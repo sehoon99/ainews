@@ -1,0 +1,9 @@
+[
+  {
+    "targets": ["host.docker.internal:9091"],
+    "labels": {
+      "environment": "local",
+      "service": "ainews-backend"
+    }
+  }
+]
